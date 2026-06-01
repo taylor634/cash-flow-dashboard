@@ -1082,7 +1082,7 @@ export default function CashFlowDashboard() {
               {/* Saved scenario chips */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '28px' }}>
                 {scenarios.map((s, i) => {
-                  const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                  const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                   const color = COLORS[i % COLORS.length];
                   const isSelected = selectedScenarioId === s.id;
                   return (
@@ -1111,7 +1111,7 @@ export default function CashFlowDashboard() {
                 const sel = scenarios.find(s => s.id === selectedScenarioId);
                 if (!sel) return null;
                 const idx = scenarios.indexOf(sel);
-                const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                 const color = COLORS[idx % COLORS.length];
                 const monthly = computeScenarioMonthly(sel);
                 const ytdIn = monthly.reduce((s, r) => s + r.totalIn, 0);
@@ -1181,7 +1181,7 @@ export default function CashFlowDashboard() {
                         <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
                         <th style={{ fontFamily: 'Source Sans 3, sans-serif', color: '#6B6252', fontStyle: 'italic' }}>Current</th>
                         {scenarios.map((s, i) => {
-                          const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                          const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                           return (
                             <th key={s.id} style={{ fontFamily: 'Source Sans 3, sans-serif', color: COLORS[i % COLORS.length] }}>
                               {s.name}
@@ -1198,7 +1198,7 @@ export default function CashFlowDashboard() {
                             <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px' }}>{month}</td>
                             <td style={{ color: current < 0 ? '#8B2A1C' : undefined }}>{fmt(current)}</td>
                             {scenarios.map((s, i) => {
-                              const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                              const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                               const val = s.monthlyEndings?.[m] ?? computeScenarioEndings(s)[m];
                               const diff = current !== undefined ? val - current : null;
                               return (
@@ -1223,7 +1223,7 @@ export default function CashFlowDashboard() {
                         <td style={{ fontFamily: 'Fraunces, serif', fontWeight: 600 }}>Year-End</td>
                         <td style={{ fontWeight: 600 }}>{fmt(calculations.monthlyData[11]?.endBudget)}</td>
                         {scenarios.map((s, i) => {
-                          const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                          const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                           const endings = s.monthlyEndings || computeScenarioEndings(s);
                           return (
                             <td key={s.id} style={{ fontWeight: 600, color: COLORS[i % COLORS.length] }}>
