@@ -913,7 +913,7 @@ export default function CashFlowDashboard() {
                   <th>Start</th><th>Inflows</th><th>Outflows</th><th>Owner Draw</th><th>Tax</th><th>Cash End</th>
                   <th style={{ color: '#2A5298', borderLeft: '2px solid #E8E0D0' }}>Actual (Bank)</th>
                   <th style={{ color: '#2A5298', borderLeft: '1px solid #E8E0D0' }}>Actual End</th>
-                  {rampBills && <th style={{ color: '#7B5B00', borderLeft: '2px solid #E8E0D0', minWidth: '120px' }}>Prior Mo. Bills</th>}
+                  <th style={{ color: '#7B5B00', borderLeft: '2px solid #E8E0D0', minWidth: '140px' }}>Clears Bank This Mo.</th>
                 </tr>
               </thead>
               <tbody>
@@ -923,20 +923,23 @@ export default function CashFlowDashboard() {
                   const actualEnd = actualEnding[row.monthIdx];
                   const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endBudget : null;
 
-                  // Prior month bills: Ramp bills whose due_date falls in the PREVIOUS month
-                  // (bills scheduled last month that will clear THIS month's bank account)
-                  let priorBills = [];
+                  // Ramp bills whose payment date (due_date) falls in THIS month
+                  // — the payment date in Ramp IS when it clears the bank
+                  let rampThisMonth = [];
                   if (rampBills?.bills) {
-                    const prevMonthIdx = row.monthIdx - 1;
-                    const prevYear = prevMonthIdx < 0 ? activeYear - 1 : activeYear;
-                    const prevMonth = prevMonthIdx < 0 ? 11 : prevMonthIdx; // 0-based
-                    priorBills = rampBills.bills.filter(b => {
+                    rampThisMonth = rampBills.bills.filter(b => {
                       if (!b.due_date) return false;
                       const d = new Date(b.due_date);
-                      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+                      return d.getFullYear() === activeYear && d.getMonth() === row.monthIdx;
                     });
                   }
-                  const priorTotal = priorBills.reduce((s, b) => s + (b.amount || 0), 0);
+                  const rampThisTotal = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
+
+                  // Accrued expenses from PRIOR month clear THIS month's bank account
+                  const priorAccrued = row.monthIdx > 0 ? (accruedByMonth[row.monthIdx - 1] || 0) : 0;
+
+                  const clearingTotal = rampThisTotal + priorAccrued;
+                  const hasClearing = clearingTotal > 0 || rampThisMonth.length > 0;
 
                   return (
                     <tr key={row.month}>
@@ -983,27 +986,38 @@ export default function CashFlowDashboard() {
                           </div>
                         )}
                       </td>
-                      {rampBills && (
-                        <td style={{ borderLeft: '2px solid #E8E0D0', fontSize: '12px', verticalAlign: 'top', paddingTop: '8px' }}>
-                          {priorBills.length === 0 ? (
-                            <span style={{ color: '#9E9484' }}>—</span>
-                          ) : (
-                            <div>
-                              <div style={{ fontWeight: 600, color: '#7B5B00', marginBottom: '2px' }}>
-                                ({fmt(priorTotal)})
+                      <td style={{ borderLeft: '2px solid #E8E0D0', fontSize: '12px', verticalAlign: 'top', paddingTop: '8px' }}>
+                        {!hasClearing ? (
+                          <span style={{ color: '#9E9484' }}>—</span>
+                        ) : (
+                          <div>
+                            {clearingTotal > 0 && (
+                              <div style={{ fontWeight: 600, color: '#7B5B00', marginBottom: '4px' }}>
+                                ({fmt(clearingTotal)}) total
                               </div>
-                              {priorBills.slice(0, 3).map(b => (
-                                <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px' }}>
-                                  {b.vendor}: {fmt(b.amount)}
-                                </div>
-                              ))}
-                              {priorBills.length > 3 && (
-                                <div style={{ color: '#9E9484', fontSize: '11px' }}>+{priorBills.length - 3} more</div>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      )}
+                            )}
+                            {priorAccrued > 0 && (
+                              <div style={{ fontSize: '11px', color: '#6B6252', marginBottom: '2px', paddingBottom: '3px', borderBottom: rampThisMonth.length > 0 ? '1px dashed #E8E0D0' : 'none' }}>
+                                <span style={{ color: '#9E9484' }}>Accrued (prev mo.):</span><br />
+                                ({fmt(priorAccrued)})
+                              </div>
+                            )}
+                            {rampThisMonth.length > 0 && (
+                              <div>
+                                {priorAccrued > 0 && <div style={{ color: '#9E9484', fontSize: '11px', marginTop: '3px', marginBottom: '2px' }}>Ramp payments:</div>}
+                                {rampThisMonth.slice(0, 4).map(b => (
+                                  <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>
+                                    {b.vendor}: ({fmt(b.amount)})
+                                  </div>
+                                ))}
+                                {rampThisMonth.length > 4 && (
+                                  <div style={{ color: '#9E9484', fontSize: '11px' }}>+{rampThisMonth.length - 4} more</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
