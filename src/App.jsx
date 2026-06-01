@@ -48,6 +48,7 @@ export default function CashFlowDashboard() {
 
   const [customItems, setCustomItems] = useState([]);
   const [actualEnding, setActualEnding] = useState(Array(12).fill(null));
+  const [actualBeginning, setActualBeginning] = useState(Array(12).fill(null));
   const [editingDraw, setEditingDraw] = useState(false);
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -73,12 +74,12 @@ export default function CashFlowDashboard() {
       try {
         const keys = ['qbData', 'fileName', 'parseInfo', 'startingCash',
                       'ownersDraw', 'taxPayments', 'customItems',
-                      'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios'];
+                      'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios', 'actualBeginning'];
         const results = await Promise.all(
           keys.map(k => window.storage.get(`cashflow:${activeYear}:${k}`).catch(() => null))
         );
         if (cancelled) return;
-        const [qb, fn, pi, sc, od, tp, ci, ae, ts, ab, sv] = results;
+        const [qb, fn, pi, sc, od, tp, ci, ae, ts, ab, sv, abeg] = results;
         if (qb?.value) setQbData(JSON.parse(qb.value));
         if (fn?.value) setFileName(fn.value);
         if (pi?.value) setParseInfo(JSON.parse(pi.value));
@@ -90,6 +91,7 @@ export default function CashFlowDashboard() {
         if (ts?.value) setLastSavedAt(ts.value);
         if (ab?.value) setAccruedByMonth(JSON.parse(ab.value));
         if (sv?.value) setScenarios(JSON.parse(sv.value));
+        if (abeg?.value) setActualBeginning(JSON.parse(abeg.value));
       } catch (err) {
         console.warn('Storage load failed:', err);
       } finally {
@@ -150,6 +152,7 @@ export default function CashFlowDashboard() {
           window.storage.set(`cashflow:${y}:lastSavedAt`, now),
           window.storage.set(`cashflow:${y}:accruedByMonth`, JSON.stringify(accruedByMonth)),
           window.storage.set(`cashflow:${y}:scenarios`, JSON.stringify(scenarios)),
+          window.storage.set(`cashflow:${y}:actualBeginning`, JSON.stringify(actualBeginning)),
         ]);
         setLastSavedAt(now);
       } catch (err) {
@@ -158,7 +161,7 @@ export default function CashFlowDashboard() {
     };
     const t = setTimeout(saveAll, 400);
     return () => clearTimeout(t);
-  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, scenarios, activeYear, isLoaded]);
+  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, actualBeginning, accruedByMonth, scenarios, activeYear, isLoaded]);
 
   const resetStateToDefaults = () => {
     setQbData(null);
@@ -169,6 +172,7 @@ export default function CashFlowDashboard() {
     setTaxPayments(DEFAULT_TAX);
     setCustomItems([]);
     setActualEnding(Array(12).fill(null));
+    setActualBeginning(Array(12).fill(null));
     setAccruedByMonth(Array(12).fill(0));
     setScenarios([]);
     setLastSavedAt(null);
@@ -907,20 +911,43 @@ export default function CashFlowDashboard() {
                 <tr>
                   <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
                   <th>Start</th><th>Inflows</th><th>Outflows</th><th>Owner Draw</th><th>Tax</th><th>Cash End</th>
+                  <th style={{ color: '#2A5298', borderLeft: '2px solid #E8E0D0' }}>Actual (Bank)</th>
                 </tr>
               </thead>
               <tbody>
-                {calculations.monthlyData.map((row) => (
-                  <tr key={row.month}>
-                    <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
-                    <td>{fmt(row.startBudget)}</td>
-                    <td>{fmt(row.inflowsBudget)}</td>
-                    <td>({fmt(row.outflowsBudget - row.draw - row.tax).replace('$','').replace('(','').replace(')','')})</td>
-                    <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
-                    <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
-                    <td style={{ fontWeight: 600 }}>{fmt(row.endBudget)}</td>
-                  </tr>
-                ))}
+                {calculations.monthlyData.map((row) => {
+                  const actual = actualBeginning[row.monthIdx];
+                  const variance = actual !== null && actual !== undefined ? actual - row.startBudget : null;
+                  return (
+                    <tr key={row.month}>
+                      <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
+                      <td>{fmt(row.startBudget)}</td>
+                      <td>{fmt(row.inflowsBudget)}</td>
+                      <td>({fmt(row.outflowsBudget - row.draw - row.tax).replace('$','').replace('(','').replace(')','')})</td>
+                      <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
+                      <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
+                      <td style={{ fontWeight: 600 }}>{fmt(row.endBudget)}</td>
+                      <td style={{ borderLeft: '2px solid #E8E0D0', minWidth: '130px' }}>
+                        <input
+                          type="number"
+                          value={actual ?? ''}
+                          onChange={e => {
+                            const v = e.target.value === '' ? null : Number(e.target.value);
+                            setActualBeginning(prev => prev.map((x, i) => i === row.monthIdx ? v : x));
+                          }}
+                          placeholder="—"
+                          className="edit"
+                          style={{ color: '#2A5298', fontWeight: 500 }}
+                        />
+                        {variance !== null && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', color: variance >= 0 ? '#2D5A3D' : '#8B2A1C' }}>
+                            {variance >= 0 ? '+' : ''}{fmtCompact(variance)} vs budget
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
