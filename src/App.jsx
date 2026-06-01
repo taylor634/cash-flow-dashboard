@@ -684,8 +684,8 @@ export default function CashFlowDashboard() {
           </div>
         </section>
 
-        {/* ── Bank Reconciliation ── */}
-        {(() => {
+        {/* ── Bank Reconciliation (current year only) ── */}
+        {activeYear > new Date().getFullYear() ? null : (() => {
           const reconRow = calculations.monthlyData[reconMonth];
           const rampTotal = rampBills?.reduce((s, b) => s + b.amount, 0) ?? 0;
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
