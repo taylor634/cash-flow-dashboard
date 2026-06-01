@@ -54,6 +54,11 @@ export default function CashFlowDashboard() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState(null);
 
+  // Scenarios
+  const [scenarios, setScenarios] = useState([]);
+  const [savingScenario, setSavingScenario] = useState(false);
+  const [newScenarioName, setNewScenarioName] = useState('');
+
   // Ramp integration
   const [rampToken, setRampToken] = useState(null);
   const [rampBills, setRampBills] = useState(null); // null = not yet fetched
@@ -68,12 +73,12 @@ export default function CashFlowDashboard() {
       try {
         const keys = ['qbData', 'fileName', 'parseInfo', 'startingCash',
                       'ownersDraw', 'taxPayments', 'customItems',
-                      'actualEnding', 'lastSavedAt', 'accruedByMonth'];
+                      'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios'];
         const results = await Promise.all(
           keys.map(k => window.storage.get(`cashflow:${k}`).catch(() => null))
         );
         if (cancelled) return;
-        const [qb, fn, pi, sc, od, tp, ci, ae, ts, ab] = results;
+        const [qb, fn, pi, sc, od, tp, ci, ae, ts, ab, sv] = results;
         if (qb?.value) setQbData(JSON.parse(qb.value));
         if (fn?.value) setFileName(fn.value);
         if (pi?.value) setParseInfo(JSON.parse(pi.value));
@@ -84,6 +89,7 @@ export default function CashFlowDashboard() {
         if (ae?.value) setActualEnding(JSON.parse(ae.value));
         if (ts?.value) setLastSavedAt(ts.value);
         if (ab?.value) setAccruedByMonth(JSON.parse(ab.value));
+        if (sv?.value) setScenarios(JSON.parse(sv.value));
       } catch (err) {
         console.warn('Storage load failed:', err);
       } finally {
@@ -142,6 +148,7 @@ export default function CashFlowDashboard() {
           window.storage.set('cashflow:actualEnding', JSON.stringify(actualEnding)),
           window.storage.set('cashflow:lastSavedAt', now),
           window.storage.set('cashflow:accruedByMonth', JSON.stringify(accruedByMonth)),
+          window.storage.set('cashflow:scenarios', JSON.stringify(scenarios)),
         ]);
         setLastSavedAt(now);
       } catch (err) {
@@ -150,7 +157,7 @@ export default function CashFlowDashboard() {
     };
     const t = setTimeout(saveAll, 400);
     return () => clearTimeout(t);
-  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, isLoaded]);
+  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, scenarios, isLoaded]);
 
   const clearSavedData = async () => {
     try {
@@ -179,6 +186,7 @@ export default function CashFlowDashboard() {
     setCustomItems([]);
     setActualEnding(Array(12).fill(null));
     setAccruedByMonth(Array(12).fill(0));
+    setScenarios([]);
     setLastSavedAt(null);
   };
 
@@ -188,6 +196,60 @@ export default function CashFlowDashboard() {
     setRampToken(null);
     setRampBills(null);
     setRampError(null);
+  };
+
+  // Compute monthly ending balances from a scenario's saved inputs
+  const computeScenarioEndings = (s) => {
+    const endings = [];
+    let running = s.startingCash;
+    for (let m = 0; m < 12; m++) {
+      const qbIn = s.qbData?.inflows.budget[m] || 0;
+      const qbOut = s.qbData?.outflows.budget[m] || 0;
+      const draw = s.ownersDraw.health[m] + s.ownersDraw.guaranteed[m] + s.ownersDraw.other[m];
+      let tax = 0;
+      if (s.taxPayments.q1Month === m) tax += s.taxPayments.q1;
+      if (s.taxPayments.q2Month === m) tax += s.taxPayments.q2;
+      if (s.taxPayments.q3Month === m) tax += s.taxPayments.q3;
+      if (s.taxPayments.q4Month === m) tax += s.taxPayments.q4;
+      let cIn = 0, cOut = 0;
+      (s.customItems || []).forEach(item => {
+        const v = Number(item.values[m]) || 0;
+        if (item.type === 'inflow') cIn += v; else cOut += v;
+      });
+      running = running + qbIn + cIn - qbOut - draw - tax - cOut;
+      endings.push(running);
+    }
+    return endings;
+  };
+
+  const saveCurrentScenario = () => {
+    const name = newScenarioName.trim() || `Scenario ${scenarios.length + 1}`;
+    const snapshot = {
+      id: Date.now(),
+      name,
+      savedAt: new Date().toISOString(),
+      startingCash, ownersDraw, taxPayments, customItems,
+      actualEnding, accruedByMonth, qbData,
+      monthlyEndings: calculations.monthlyData.map(m => m.endBudget),
+    };
+    setScenarios(prev => [...prev, snapshot]);
+    setNewScenarioName('');
+    setSavingScenario(false);
+  };
+
+  const loadScenario = (s) => {
+    if (!confirm(`Load "${s.name}"? This will replace your current inputs.`)) return;
+    setStartingCash(s.startingCash);
+    setOwnersDraw(s.ownersDraw);
+    setTaxPayments(s.taxPayments);
+    setCustomItems(s.customItems || []);
+    setActualEnding(s.actualEnding || Array(12).fill(null));
+    setAccruedByMonth(s.accruedByMonth || Array(12).fill(0));
+    if (s.qbData) setQbData(s.qbData);
+  };
+
+  const deleteScenario = (id) => {
+    setScenarios(prev => prev.filter(s => s.id !== id));
   };
 
   const fetchRampBills = useCallback(async () => {
@@ -944,6 +1006,140 @@ export default function CashFlowDashboard() {
                 </tbody>
               </table>
             </div>
+          )}
+        </section>
+
+        {/* ── Scenarios ── */}
+        <section className="card" style={{ marginBottom: '32px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '24px' }}>
+            <div>
+              <h2 className="serif" style={{ fontSize: '24px', fontWeight: 400, margin: '0 0 4px' }}>Scenarios</h2>
+              <div style={{ fontSize: '12px', color: '#6B6252' }}>
+                Save the current dashboard as a named scenario to compare side by side.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {savingScenario ? (
+                <>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newScenarioName}
+                    onChange={e => setNewScenarioName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveCurrentScenario(); if (e.key === 'Escape') setSavingScenario(false); }}
+                    placeholder="e.g. Base Case"
+                    style={{ border: '1px solid #B8AE98', padding: '8px 12px', fontSize: '13px', fontFamily: 'Source Sans 3, sans-serif', width: '180px' }}
+                  />
+                  <button className="primary" onClick={saveCurrentScenario}>Save</button>
+                  <button className="ghost" onClick={() => setSavingScenario(false)}>Cancel</button>
+                </>
+              ) : (
+                <button className="primary" onClick={() => setSavingScenario(true)}>
+                  <Plus size={13} style={{ display: 'inline', marginRight: '6px', verticalAlign: '-2px' }} />
+                  Save Snapshot
+                </button>
+              )}
+            </div>
+          </div>
+
+          {scenarios.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 16px', color: '#6B6252', fontSize: '13px', fontStyle: 'italic', border: '1px dashed #E8E0D0' }}>
+              No scenarios saved yet. Click "Save Snapshot" to capture the current dashboard state.
+            </div>
+          ) : (
+            <>
+              {/* Saved scenario chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '28px' }}>
+                {scenarios.map((s, i) => {
+                  const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                  const color = COLORS[i % COLORS.length];
+                  return (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', border: `1px solid ${color}`, padding: '8px 14px', borderLeft: `4px solid ${color}` }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Fraunces, serif' }}>{s.name}</div>
+                        <div style={{ fontSize: '10px', color: '#6B6252', letterSpacing: '0.05em', marginTop: '2px' }}>
+                          {new Date(s.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', marginLeft: '8px' }}>
+                        <button onClick={() => loadScenario(s)} style={{ background: 'none', border: '1px solid #B8AE98', padding: '3px 8px', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Source Sans 3, sans-serif' }}>Load</button>
+                        <button onClick={() => deleteScenario(s.id)} style={{ background: 'none', border: 'none', padding: '3px 6px', fontSize: '10px', color: '#8B2A1C', cursor: 'pointer' }}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Comparison table */}
+              <div>
+                <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#6B6252', marginBottom: '12px' }}>
+                  Ending Cash Balance — Comparison
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="mono">
+                    <thead>
+                      <tr>
+                        <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
+                        <th style={{ fontFamily: 'Source Sans 3, sans-serif', color: '#6B6252', fontStyle: 'italic' }}>Current</th>
+                        {scenarios.map((s, i) => {
+                          const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                          return (
+                            <th key={s.id} style={{ fontFamily: 'Source Sans 3, sans-serif', color: COLORS[i % COLORS.length] }}>
+                              {s.name}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MONTHS.map((month, m) => {
+                        const current = calculations.monthlyData[m]?.endBudget;
+                        return (
+                          <tr key={month}>
+                            <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px' }}>{month}</td>
+                            <td style={{ color: current < 0 ? '#8B2A1C' : undefined }}>{fmt(current)}</td>
+                            {scenarios.map((s, i) => {
+                              const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                              const val = s.monthlyEndings?.[m] ?? computeScenarioEndings(s)[m];
+                              const diff = current !== undefined ? val - current : null;
+                              return (
+                                <td key={s.id}>
+                                  <div style={{ color: val < 0 ? '#8B2A1C' : COLORS[i % COLORS.length], fontWeight: 500 }}>
+                                    {fmt(val)}
+                                  </div>
+                                  {diff !== null && diff !== 0 && (
+                                    <div style={{ fontSize: '10px', color: diff > 0 ? '#2D5A3D' : '#8B2A1C', letterSpacing: '0.03em' }}>
+                                      {diff > 0 ? '+' : ''}{fmtCompact(diff)} vs current
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#F5F1EA', borderTop: '2px solid #1A1A1A' }}>
+                        <td style={{ fontFamily: 'Fraunces, serif', fontWeight: 600 }}>Year-End</td>
+                        <td style={{ fontWeight: 600 }}>{fmt(calculations.monthlyData[11]?.endBudget)}</td>
+                        {scenarios.map((s, i) => {
+                          const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                          const endings = s.monthlyEndings || computeScenarioEndings(s);
+                          return (
+                            <td key={s.id} style={{ fontWeight: 600, color: COLORS[i % COLORS.length] }}>
+                              {fmt(endings[11])}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </section>
 
