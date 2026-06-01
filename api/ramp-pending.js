@@ -57,30 +57,11 @@ export default async function handler(req, res) {
     const data = await r.json();
     const rawBills = data.data || data.bills || data.results || [];
 
-    // Log all statuses seen so we can debug missing bills
-    const statusesSeen = [...new Set(rawBills.map(b => b.status))];
-    console.log('Ramp bills fetched:', rawBills.length, 'Statuses:', statusesSeen);
-    rawBills.forEach(b => {
-      const vendor = b.vendor?.name || b.counterparty_name || b.description || 'Unknown';
-      console.log(`  Bill: ${vendor} | status: ${b.status} | amount: ${b.amount}`);
-    });
-
     // Show everything that hasn't been fully paid or cancelled
     const EXCLUDED_STATUSES = new Set(['PAID', 'CANCELLED', 'REJECTED', 'VOIDED']);
     allBills = rawBills.filter(b => !EXCLUDED_STATUSES.has(b.status));
 
-    // Inspect the first bill to understand the amount field structure
-    const sample = allBills[0];
-    const debugFields = sample ? {
-      amount_raw: sample.amount,
-      amount_type: typeof sample.amount,
-      invoice_amount: sample.invoice_amount,
-      total_amount: sample.total_amount,
-      line_items: sample.line_items,
-      all_keys: Object.keys(sample),
-    } : null;
-
-    // Try multiple amount field paths — Ramp may store as object, cents int, or float
+    // Parse amount across multiple possible Ramp field shapes
     const parseAmount = (b) => {
       if (b.amount !== null && b.amount !== undefined) {
         if (typeof b.amount === 'object') {
@@ -106,7 +87,7 @@ export default async function handler(req, res) {
     }));
 
     const total = bills.reduce((sum, b) => sum + b.amount, 0);
-    return res.json({ bills, total, count: bills.length, _debug: debugFields });
+    return res.json({ bills, total, count: bills.length });
 
   } catch (err) {
     if (err.name === 'AbortError') {
