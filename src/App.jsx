@@ -1140,13 +1140,10 @@ export default function CashFlowDashboard() {
                             <th>Owner Draw</th>
                             <th>Tax</th>
                             <th style={{ color }}>Cash End</th>
-                            <th style={{ color: '#6B6252' }}>vs Current</th>
                           </tr>
                         </thead>
                         <tbody>
                           {monthly.map((row, m) => {
-                            const currentEnd = calculations.monthlyData[m]?.endBudget;
-                            const diff = currentEnd !== undefined ? row.endBudget - currentEnd : null;
                             return (
                               <tr key={row.month}>
                                 <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
@@ -1156,9 +1153,6 @@ export default function CashFlowDashboard() {
                                 <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                                 <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
                                 <td style={{ fontWeight: 600, color: row.endBudget < 0 ? '#8B2A1C' : color }}>{fmt(row.endBudget)}</td>
-                                <td style={{ fontSize: '12px', color: diff === null || diff === 0 ? '#6B6252' : diff > 0 ? '#2D5A3D' : '#8B2A1C' }}>
-                                  {diff === null ? '—' : diff === 0 ? 'same' : `${diff > 0 ? '+' : ''}${fmtCompact(diff)}`}
-                                </td>
                               </tr>
                             );
                           })}
