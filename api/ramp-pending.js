@@ -69,17 +69,44 @@ export default async function handler(req, res) {
     const EXCLUDED_STATUSES = new Set(['PAID', 'CANCELLED', 'REJECTED', 'VOIDED']);
     allBills = rawBills.filter(b => !EXCLUDED_STATUSES.has(b.status));
 
-    // Normalize amounts — Ramp stores amounts in cents
+    // Inspect the first bill to understand the amount field structure
+    const sample = allBills[0];
+    const debugFields = sample ? {
+      amount_raw: sample.amount,
+      amount_type: typeof sample.amount,
+      invoice_amount: sample.invoice_amount,
+      total_amount: sample.total_amount,
+      line_items: sample.line_items,
+      all_keys: Object.keys(sample),
+    } : null;
+
+    // Try multiple amount field paths — Ramp may store as object, cents int, or float
+    const parseAmount = (b) => {
+      if (b.amount !== null && b.amount !== undefined) {
+        if (typeof b.amount === 'object') {
+          // {amount: 123456, currency_code: 'USD'} — amount in cents
+          return (b.amount.amount || 0) / 100;
+        }
+        if (typeof b.amount === 'number') {
+          // Could be cents (large int) or dollars (float)
+          return b.amount > 500 ? b.amount / 100 : b.amount;
+        }
+      }
+      if (b.invoice_amount !== undefined) return Number(b.invoice_amount) || 0;
+      if (b.total_amount !== undefined) return Number(b.total_amount) || 0;
+      return 0;
+    };
+
     const bills = allBills.map(b => ({
       id: b.id,
       vendor: b.vendor?.name || b.counterparty_name || b.description || 'Unknown',
-      amount: (b.amount || 0) / 100,
+      amount: parseAmount(b),
       due_date: b.due_at || b.due_date || null,
       status: b.status,
     }));
 
     const total = bills.reduce((sum, b) => sum + b.amount, 0);
-    return res.json({ bills, total, count: bills.length });
+    return res.json({ bills, total, count: bills.length, _debug: debugFields });
 
   } catch (err) {
     if (err.name === 'AbortError') {
