@@ -11,7 +11,6 @@ export default function handler(req, res) {
     client_id: RAMP_CLIENT_ID,
     redirect_uri: RAMP_REDIRECT_URI,
     response_type: 'code',
-    scope: 'bills:read',
   });
 
   res.redirect(`https://app.ramp.com/v1/authorize?${params}`);
