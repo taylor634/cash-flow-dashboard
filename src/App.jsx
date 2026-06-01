@@ -1173,7 +1173,6 @@ export default function CashFlowDashboard() {
                     <thead>
                       <tr>
                         <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
-                        <th style={{ fontFamily: 'Source Sans 3, sans-serif', color: '#6B6252', fontStyle: 'italic' }}>Current</th>
                         {scenarios.map((s, i) => {
                           const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                           return (
@@ -1185,37 +1184,24 @@ export default function CashFlowDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {MONTHS.map((month, m) => {
-                        const current = calculations.monthlyData[m]?.endBudget;
-                        return (
-                          <tr key={month}>
-                            <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px' }}>{month}</td>
-                            <td style={{ color: current < 0 ? '#8B2A1C' : undefined }}>{fmt(current)}</td>
-                            {scenarios.map((s, i) => {
-                              const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
-                              const val = s.monthlyEndings?.[m] ?? computeScenarioEndings(s)[m];
-                              const diff = current !== undefined ? val - current : null;
-                              return (
-                                <td key={s.id}>
-                                  <div style={{ color: val < 0 ? '#8B2A1C' : COLORS[i % COLORS.length], fontWeight: 500 }}>
-                                    {fmt(val)}
-                                  </div>
-                                  {diff !== null && diff !== 0 && (
-                                    <div style={{ fontSize: '10px', color: diff > 0 ? '#2D5A3D' : '#8B2A1C', letterSpacing: '0.03em' }}>
-                                      {diff > 0 ? '+' : ''}{fmtCompact(diff)} vs current
-                                    </div>
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
+                      {MONTHS.map((month, m) => (
+                        <tr key={month}>
+                          <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px' }}>{month}</td>
+                          {scenarios.map((s, i) => {
+                            const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
+                            const val = s.monthlyEndings?.[m] ?? computeScenarioEndings(s)[m];
+                            return (
+                              <td key={s.id} style={{ color: val < 0 ? '#8B2A1C' : COLORS[i % COLORS.length], fontWeight: 500 }}>
+                                {fmt(val)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ background: '#F5F1EA', borderTop: '2px solid #1A1A1A' }}>
                         <td style={{ fontFamily: 'Fraunces, serif', fontWeight: 600 }}>Year-End</td>
-                        <td style={{ fontWeight: 600 }}>{fmt(calculations.monthlyData[11]?.endBudget)}</td>
                         {scenarios.map((s, i) => {
                           const COLORS = ['#1A1A1A', '#2A5298', '#2D5A3D', '#7B5B00'];
                           const endings = s.monthlyEndings || computeScenarioEndings(s);
