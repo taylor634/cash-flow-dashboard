@@ -451,8 +451,13 @@ export default function CashFlowDashboard() {
       // Amounts that clear the bank this month:
       // 1) Ramp bills whose payment date is this month
       // 2) Accrued expenses entered for the PRIOR month (they clear this month)
+      const todayMonth = new Date().getMonth();
+      const todayYear = new Date().getFullYear();
       const rampThisMonth = rampBills?.bills?.filter(b => {
-        if (!b.due_date) return false;
+        if (!b.due_date) {
+          // Bills with no date set in Ramp — place in the current calendar month
+          return activeYear === todayYear && m === todayMonth;
+        }
         const d = new Date(b.due_date);
         return d.getFullYear() === activeYear && d.getMonth() === m;
       }) || [];
