@@ -26,26 +26,25 @@ const fmtCompact = (n) => {
   return `${n < 0 ? '-' : ''}$${abs.toFixed(0)}`;
 };
 
+const DEFAULT_DRAW = {
+  health: [5900, 2900, 2900, 2900, 2900, 3100, 3100, 3100, 3100, 3100, 3100, 3100],
+  guaranteed: Array(12).fill(55000),
+  other: Array(12).fill(2200),
+};
+const DEFAULT_TAX = { q1: 165000, q1Month: 0, q2: 161000, q2Month: 3, q3: 118000, q3Month: 6, q4: 118000, q4Month: 9 };
+const DEFAULT_STARTING_CASH = 656450;
+
 export default function CashFlowDashboard() {
+  const [activeYear, setActiveYear] = useState(() => Number(localStorage.getItem('cashflow:activeYear')) || 2026);
+
   const [qbData, setQbData] = useState(null);
   const [fileName, setFileName] = useState('');
   const [parseInfo, setParseInfo] = useState(null);
   const fileInputRef = useRef(null);
 
-  const [startingCash, setStartingCash] = useState(656450);
-
-  const [ownersDraw, setOwnersDraw] = useState({
-    health: [5900, 2900, 2900, 2900, 2900, 3100, 3100, 3100, 3100, 3100, 3100, 3100],
-    guaranteed: Array(12).fill(55000),
-    other: Array(12).fill(2200),
-  });
-
-  const [taxPayments, setTaxPayments] = useState({
-    q1: 165000, q1Month: 0,
-    q2: 161000, q2Month: 3,
-    q3: 118000, q3Month: 6,
-    q4: 118000, q4Month: 9,
-  });
+  const [startingCash, setStartingCash] = useState(DEFAULT_STARTING_CASH);
+  const [ownersDraw, setOwnersDraw] = useState(DEFAULT_DRAW);
+  const [taxPayments, setTaxPayments] = useState(DEFAULT_TAX);
 
   const [customItems, setCustomItems] = useState([]);
   const [actualEnding, setActualEnding] = useState(Array(12).fill(null));
@@ -76,7 +75,7 @@ export default function CashFlowDashboard() {
                       'ownersDraw', 'taxPayments', 'customItems',
                       'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios'];
         const results = await Promise.all(
-          keys.map(k => window.storage.get(`cashflow:${k}`).catch(() => null))
+          keys.map(k => window.storage.get(`cashflow:${activeYear}:${k}`).catch(() => null))
         );
         if (cancelled) return;
         const [qb, fn, pi, sc, od, tp, ci, ae, ts, ab, sv] = results;
@@ -125,31 +124,32 @@ export default function CashFlowDashboard() {
     }
 
     return () => { cancelled = true; };
-  }, []);
+  }, [activeYear]);
 
   useEffect(() => {
     if (!isLoaded) return;
     const saveAll = async () => {
       const now = new Date().toISOString();
       try {
+        const y = activeYear;
         await Promise.all([
           qbData
-            ? window.storage.set('cashflow:qbData', JSON.stringify(qbData))
-            : window.storage.delete('cashflow:qbData').catch(() => null),
+            ? window.storage.set(`cashflow:${y}:qbData`, JSON.stringify(qbData))
+            : window.storage.delete(`cashflow:${y}:qbData`).catch(() => null),
           fileName
-            ? window.storage.set('cashflow:fileName', fileName)
-            : window.storage.delete('cashflow:fileName').catch(() => null),
+            ? window.storage.set(`cashflow:${y}:fileName`, fileName)
+            : window.storage.delete(`cashflow:${y}:fileName`).catch(() => null),
           parseInfo
-            ? window.storage.set('cashflow:parseInfo', JSON.stringify(parseInfo))
-            : window.storage.delete('cashflow:parseInfo').catch(() => null),
-          window.storage.set('cashflow:startingCash', String(startingCash)),
-          window.storage.set('cashflow:ownersDraw', JSON.stringify(ownersDraw)),
-          window.storage.set('cashflow:taxPayments', JSON.stringify(taxPayments)),
-          window.storage.set('cashflow:customItems', JSON.stringify(customItems)),
-          window.storage.set('cashflow:actualEnding', JSON.stringify(actualEnding)),
-          window.storage.set('cashflow:lastSavedAt', now),
-          window.storage.set('cashflow:accruedByMonth', JSON.stringify(accruedByMonth)),
-          window.storage.set('cashflow:scenarios', JSON.stringify(scenarios)),
+            ? window.storage.set(`cashflow:${y}:parseInfo`, JSON.stringify(parseInfo))
+            : window.storage.delete(`cashflow:${y}:parseInfo`).catch(() => null),
+          window.storage.set(`cashflow:${y}:startingCash`, String(startingCash)),
+          window.storage.set(`cashflow:${y}:ownersDraw`, JSON.stringify(ownersDraw)),
+          window.storage.set(`cashflow:${y}:taxPayments`, JSON.stringify(taxPayments)),
+          window.storage.set(`cashflow:${y}:customItems`, JSON.stringify(customItems)),
+          window.storage.set(`cashflow:${y}:actualEnding`, JSON.stringify(actualEnding)),
+          window.storage.set(`cashflow:${y}:lastSavedAt`, now),
+          window.storage.set(`cashflow:${y}:accruedByMonth`, JSON.stringify(accruedByMonth)),
+          window.storage.set(`cashflow:${y}:scenarios`, JSON.stringify(scenarios)),
         ]);
         setLastSavedAt(now);
       } catch (err) {
@@ -158,37 +158,42 @@ export default function CashFlowDashboard() {
     };
     const t = setTimeout(saveAll, 400);
     return () => clearTimeout(t);
-  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, scenarios, isLoaded]);
+  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, scenarios, activeYear, isLoaded]);
 
-  const clearSavedData = async () => {
-    try {
-      const keys = ['qbData', 'fileName', 'parseInfo', 'startingCash',
-                    'ownersDraw', 'taxPayments', 'customItems',
-                    'actualEnding', 'lastSavedAt', 'accruedByMonth'];
-      await Promise.all(keys.map(k => window.storage.delete(`cashflow:${k}`).catch(() => null)));
-    } catch (err) {
-      console.warn('Clear failed:', err);
-    }
+  const resetStateToDefaults = () => {
     setQbData(null);
     setFileName('');
     setParseInfo(null);
-    setStartingCash(656450);
-    setOwnersDraw({
-      health: [5900, 2900, 2900, 2900, 2900, 3100, 3100, 3100, 3100, 3100, 3100, 3100],
-      guaranteed: Array(12).fill(55000),
-      other: Array(12).fill(2200),
-    });
-    setTaxPayments({
-      q1: 165000, q1Month: 0,
-      q2: 161000, q2Month: 3,
-      q3: 118000, q3Month: 6,
-      q4: 118000, q4Month: 9,
-    });
+    setStartingCash(DEFAULT_STARTING_CASH);
+    setOwnersDraw(DEFAULT_DRAW);
+    setTaxPayments(DEFAULT_TAX);
     setCustomItems([]);
     setActualEnding(Array(12).fill(null));
     setAccruedByMonth(Array(12).fill(0));
     setScenarios([]);
     setLastSavedAt(null);
+    setSavingScenario(false);
+    setSelectedScenarioId(null);
+  };
+
+  const clearSavedData = async () => {
+    try {
+      const keys = ['qbData', 'fileName', 'parseInfo', 'startingCash',
+                    'ownersDraw', 'taxPayments', 'customItems',
+                    'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios'];
+      await Promise.all(keys.map(k => window.storage.delete(`cashflow:${activeYear}:${k}`).catch(() => null)));
+    } catch (err) {
+      console.warn('Clear failed:', err);
+    }
+    resetStateToDefaults();
+  };
+
+  const switchYear = (year) => {
+    if (year === activeYear) return;
+    localStorage.setItem('cashflow:activeYear', year);
+    setIsLoaded(false);      // pause saves during transition
+    resetStateToDefaults();  // clear current state
+    setActiveYear(year);     // triggers the load effect with new year's prefix
   };
 
   const disconnectRamp = () => {
@@ -536,15 +541,34 @@ export default function CashFlowDashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '24px' }}>
             <div>
               <div style={{ fontSize: '10px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#6B6252', marginBottom: '8px' }}>
-                Fiscal Year 2026 · Cash Position Report
+                Fiscal Year {activeYear} · Cash Position Report
               </div>
               <h1 className="serif" style={{ fontSize: '52px', fontWeight: 400, margin: 0, lineHeight: 1 }}>
                 Cash Flow <em style={{ fontStyle: 'italic', fontWeight: 300 }}>Dashboard</em>
               </h1>
             </div>
-            <div style={{ textAlign: 'right', fontSize: '11px', color: '#6B6252', letterSpacing: '0.05em' }}>
-              <div>BUDGET vs ACTUAL</div>
-              <div>MONTHLY RECONCILIATION</div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '16px' }}>
+              {/* Year tabs */}
+              <div style={{ display: 'flex' }}>
+                {[2026, 2027].map((year, i) => (
+                  <button key={year} onClick={() => switchYear(year)} style={{
+                    background: activeYear === year ? '#1A1A1A' : 'transparent',
+                    color: activeYear === year ? '#FDFBF6' : '#1A1A1A',
+                    border: '1px solid #1A1A1A',
+                    borderRight: i === 0 ? 'none' : undefined,
+                    padding: '10px 24px',
+                    fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em',
+                    textTransform: 'uppercase', cursor: 'pointer',
+                    fontFamily: 'Source Sans 3, sans-serif', transition: 'all 0.15s',
+                  }}>
+                    FY {year}
+                  </button>
+                ))}
+              </div>
+              <div style={{ textAlign: 'right', fontSize: '11px', color: '#6B6252', letterSpacing: '0.05em' }}>
+                <div>BUDGET vs ACTUAL</div>
+                <div>MONTHLY RECONCILIATION</div>
+              </div>
             </div>
           </div>
         </header>
