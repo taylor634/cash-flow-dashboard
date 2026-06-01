@@ -596,7 +596,7 @@ export default function CashFlowDashboard() {
           const reconRow = calculations.monthlyData[reconMonth];
           const rampTotal = rampBills?.reduce((s, b) => s + b.amount, 0) ?? 0;
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
-          const adjustedBalance = reconRow ? reconRow.endBudget - rampTotal - accrued : null;
+          const adjustedBalance = reconRow ? reconRow.endBudget + rampTotal + accrued : null;
           const rampReady = RAMP_API_BASE !== 'PENDING_VERCEL_URL';
 
           return (
@@ -627,19 +627,19 @@ export default function CashFlowDashboard() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E8E0D0' }}>
                       <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>
-                        – Ramp Scheduled Payments
+                        + Ramp Scheduled Payments
                         {rampBills !== null && (
                           <span style={{ marginLeft: '8px', fontSize: '11px', color: '#2D5A3D', background: '#E8F0E8', padding: '2px 6px', borderRadius: '2px' }}>
                             {rampBills.length} bill{rampBills.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </span>
-                      <span className="mono" style={{ fontSize: '14px', color: rampBills !== null ? '#8B2A1C' : '#B8AE98' }}>
-                        {rampBills !== null ? (rampTotal > 0 ? `(${fmt(rampTotal)})` : '—') : '—'}
+                      <span className="mono" style={{ fontSize: '14px', color: rampBills !== null ? '#2D5A3D' : '#B8AE98' }}>
+                        {rampBills !== null ? (rampTotal > 0 ? `+${fmt(rampTotal)}` : '—') : '—'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '2px solid #1A1A1A' }}>
-                      <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>– Accrued Expenses ({MONTHS[reconMonth]})</span>
+                      <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>+ Accrued Expenses ({MONTHS[reconMonth]})</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <span className="mono" style={{ fontSize: '13px', color: '#6B6252' }}>$</span>
                         <input
