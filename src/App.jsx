@@ -911,15 +911,12 @@ export default function CashFlowDashboard() {
                 <tr>
                   <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
                   <th>Start</th><th>Inflows</th><th>Outflows</th><th>Owner Draw</th><th>Tax</th><th>Cash End</th>
-                  <th style={{ color: '#2A5298', borderLeft: '2px solid #E8E0D0' }}>Actual (Bank)</th>
-                  <th style={{ color: '#2A5298', borderLeft: '1px solid #E8E0D0' }}>Actual End</th>
+                  <th style={{ color: '#2A5298', borderLeft: '2px solid #E8E0D0' }}>Actual End</th>
                   <th style={{ color: '#7B5B00', borderLeft: '2px solid #E8E0D0', minWidth: '140px' }}>Clears Bank This Mo.</th>
                 </tr>
               </thead>
               <tbody>
                 {calculations.monthlyData.map((row) => {
-                  const actual = actualBeginning[row.monthIdx];
-                  const variance = actual !== null && actual !== undefined ? actual - row.startBudget : null;
                   const actualEnd = actualEnding[row.monthIdx];
                   const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endBudget : null;
 
@@ -951,24 +948,6 @@ export default function CashFlowDashboard() {
                       <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
                       <td style={{ fontWeight: 600 }}>{fmt(row.endBudget)}</td>
                       <td style={{ borderLeft: '2px solid #E8E0D0', minWidth: '130px' }}>
-                        <input
-                          type="number"
-                          value={actual ?? ''}
-                          onChange={e => {
-                            const v = e.target.value === '' ? null : Number(e.target.value);
-                            setActualBeginning(prev => prev.map((x, i) => i === row.monthIdx ? v : x));
-                          }}
-                          placeholder="—"
-                          className="edit"
-                          style={{ color: '#2A5298', fontWeight: 500 }}
-                        />
-                        {variance !== null && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', color: variance >= 0 ? '#2D5A3D' : '#8B2A1C' }}>
-                            {variance >= 0 ? '+' : ''}{fmtCompact(variance)} vs budget
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ borderLeft: '1px solid #E8E0D0', minWidth: '130px' }}>
                         <input
                           type="number"
                           value={actualEnd ?? ''}
