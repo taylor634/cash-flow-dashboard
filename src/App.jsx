@@ -447,10 +447,23 @@ export default function CashFlowDashboard() {
       const totalOut = qbOut + drawTotal + taxThisMonth + customOut;
       const startBudget = runningBudget;
       const startActual = runningActual;
+
+      // Amounts that clear the bank this month:
+      // 1) Ramp bills whose payment date is this month
+      // 2) Accrued expenses entered for the PRIOR month (they clear this month)
+      const rampThisMonth = rampBills?.bills?.filter(b => {
+        if (!b.due_date) return false;
+        const d = new Date(b.due_date);
+        return d.getFullYear() === activeYear && d.getMonth() === m;
+      }) || [];
+      const rampThisTotal = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
+      const priorAccrued = m > 0 ? (accruedByMonth[m - 1] || 0) : 0;
+      const clearingTotal = rampThisTotal + priorAccrued;
+
       const endBudget = startBudget + totalIn - totalOut;
-      const endActualProjected = startActual + totalIn - totalOut;
+      const endActualProjected = startActual + totalIn - totalOut - clearingTotal;
       const endActual = actualEnding[m] !== null ? actualEnding[m] : null;
-      const variance = endActual !== null ? endActual - endBudget : null;
+      const variance = endActual !== null ? endActual - endActualProjected : null;
 
       monthlyData.push({
         month: MONTHS[m], monthIdx: m, startBudget, startActual,
@@ -458,6 +471,7 @@ export default function CashFlowDashboard() {
         draw: drawTotal, tax: taxThisMonth, customIn, customOut,
         endBudget, endActual, endActualProjected, variance,
         hasActual: endActual !== null,
+        clearingTotal, rampThisMonth, priorAccrued,
       });
 
       runningBudget = endBudget;
@@ -470,7 +484,7 @@ export default function CashFlowDashboard() {
     const lowestMonth = monthlyData.reduce((min, m) => m.endBudget < min.endBudget ? m : min, monthlyData[0]);
 
     return { monthlyData, ytdInflowsBudget, ytdOutflowsBudget, netBudget, lowestMonth };
-  }, [qbData, startingCash, ownersDraw, taxPayments, customItems, actualEnding]);
+  }, [qbData, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, rampBills, activeYear]);
 
   const updateDraw = (category, monthIdx, value) => {
     setOwnersDraw(prev => ({
@@ -920,22 +934,7 @@ export default function CashFlowDashboard() {
                   const actualEnd = actualEnding[row.monthIdx];
                   const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endActualProjected : null;
 
-                  // Ramp bills whose payment date (due_date) falls in THIS month
-                  // — the payment date in Ramp IS when it clears the bank
-                  let rampThisMonth = [];
-                  if (rampBills?.bills) {
-                    rampThisMonth = rampBills.bills.filter(b => {
-                      if (!b.due_date) return false;
-                      const d = new Date(b.due_date);
-                      return d.getFullYear() === activeYear && d.getMonth() === row.monthIdx;
-                    });
-                  }
-                  const rampThisTotal = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
-
-                  // Accrued expenses from PRIOR month clear THIS month's bank account
-                  const priorAccrued = row.monthIdx > 0 ? (accruedByMonth[row.monthIdx - 1] || 0) : 0;
-
-                  const clearingTotal = rampThisTotal + priorAccrued;
+                  const { clearingTotal, rampThisMonth, priorAccrued } = row;
                   const hasClearing = clearingTotal > 0 || rampThisMonth.length > 0;
 
                   return (
