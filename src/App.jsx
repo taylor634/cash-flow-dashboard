@@ -58,6 +58,7 @@ export default function CashFlowDashboard() {
   const [scenarios, setScenarios] = useState([]);
   const [savingScenario, setSavingScenario] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState('');
+  const [selectedScenarioId, setSelectedScenarioId] = useState(null);
 
   // Ramp integration
   const [rampToken, setRampToken] = useState(null);
@@ -198,9 +199,9 @@ export default function CashFlowDashboard() {
     setRampError(null);
   };
 
-  // Compute monthly ending balances from a scenario's saved inputs
-  const computeScenarioEndings = (s) => {
-    const endings = [];
+  // Compute full monthly breakdown from a scenario's saved inputs
+  const computeScenarioMonthly = (s) => {
+    const rows = [];
     let running = s.startingCash;
     for (let m = 0; m < 12; m++) {
       const qbIn = s.qbData?.inflows.budget[m] || 0;
@@ -216,11 +217,17 @@ export default function CashFlowDashboard() {
         const v = Number(item.values[m]) || 0;
         if (item.type === 'inflow') cIn += v; else cOut += v;
       });
-      running = running + qbIn + cIn - qbOut - draw - tax - cOut;
-      endings.push(running);
+      const totalIn = qbIn + cIn;
+      const totalOut = qbOut + draw + tax + cOut;
+      const start = running;
+      running = start + totalIn - totalOut;
+      rows.push({ month: MONTHS[m], start, totalIn, totalOut, draw, tax, endBudget: running });
     }
-    return endings;
+    return rows;
   };
+
+  // Kept for comparison table (just endings)
+  const computeScenarioEndings = (s) => computeScenarioMonthly(s).map(r => r.endBudget);
 
   const saveCurrentScenario = () => {
     const name = newScenarioName.trim() || `Scenario ${scenarios.length + 1}`;
@@ -1053,17 +1060,20 @@ export default function CashFlowDashboard() {
                 {scenarios.map((s, i) => {
                   const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
                   const color = COLORS[i % COLORS.length];
+                  const isSelected = selectedScenarioId === s.id;
                   return (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', border: `1px solid ${color}`, padding: '8px 14px', borderLeft: `4px solid ${color}` }}>
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', border: `1px solid ${color}`, padding: '8px 14px', borderLeft: `4px solid ${color}`, background: isSelected ? color : 'transparent', cursor: 'pointer', transition: 'all 0.15s' }}
+                      onClick={() => setSelectedScenarioId(isSelected ? null : s.id)}>
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Fraunces, serif' }}>{s.name}</div>
-                        <div style={{ fontSize: '10px', color: '#6B6252', letterSpacing: '0.05em', marginTop: '2px' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Fraunces, serif', color: isSelected ? '#FDFBF6' : color }}>{s.name}</div>
+                        <div style={{ fontSize: '10px', color: isSelected ? 'rgba(253,251,246,0.7)' : '#6B6252', letterSpacing: '0.05em', marginTop: '2px' }}>
                           {new Date(s.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {isSelected ? ' · click to close' : ' · click to view'}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '6px', marginLeft: '8px' }}>
-                        <button onClick={() => loadScenario(s)} style={{ background: 'none', border: '1px solid #B8AE98', padding: '3px 8px', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Source Sans 3, sans-serif' }}>Load</button>
-                        <button onClick={() => deleteScenario(s.id)} style={{ background: 'none', border: 'none', padding: '3px 6px', fontSize: '10px', color: '#8B2A1C', cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', gap: '6px', marginLeft: '8px' }} onClick={e => e.stopPropagation()}>
+                        <button onClick={() => loadScenario(s)} style={{ background: 'none', border: `1px solid ${isSelected ? 'rgba(253,251,246,0.5)' : '#B8AE98'}`, padding: '3px 8px', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Source Sans 3, sans-serif', color: isSelected ? '#FDFBF6' : undefined }}>Load</button>
+                        <button onClick={() => { deleteScenario(s.id); if (isSelected) setSelectedScenarioId(null); }} style={{ background: 'none', border: 'none', padding: '3px 6px', fontSize: '10px', color: isSelected ? 'rgba(253,251,246,0.8)' : '#8B2A1C', cursor: 'pointer' }}>
                           <Trash2 size={12} />
                         </button>
                       </div>
@@ -1071,6 +1081,69 @@ export default function CashFlowDashboard() {
                   );
                 })}
               </div>
+
+              {/* Selected scenario monthly breakdown */}
+              {(() => {
+                const sel = scenarios.find(s => s.id === selectedScenarioId);
+                if (!sel) return null;
+                const idx = scenarios.indexOf(sel);
+                const COLORS = ['#1A1A1A', '#8B2A1C', '#2D5A3D', '#6B4F1F'];
+                const color = COLORS[idx % COLORS.length];
+                const monthly = computeScenarioMonthly(sel);
+                const ytdIn = monthly.reduce((s, r) => s + r.totalIn, 0);
+                const ytdOut = monthly.reduce((s, r) => s + r.totalOut, 0);
+                return (
+                  <div style={{ marginBottom: '28px', borderTop: `2px solid ${color}`, paddingTop: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '16px' }}>
+                      <div className="serif" style={{ fontSize: '18px', fontWeight: 400, color }}>
+                        {sel.name} <em style={{ fontWeight: 300, color: '#6B6252', fontSize: '15px' }}>— monthly breakdown</em>
+                      </div>
+                      <div style={{ display: 'flex', gap: '24px', fontSize: '11px', color: '#6B6252', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                        <span>Starting: <strong className="mono">{fmt(sel.startingCash)}</strong></span>
+                        <span>YTD In: <strong className="mono" style={{ color: '#2D5A3D' }}>{fmtCompact(ytdIn)}</strong></span>
+                        <span>YTD Out: <strong className="mono" style={{ color: '#8B2A1C' }}>{fmtCompact(ytdOut)}</strong></span>
+                        <span>Year-End: <strong className="mono">{fmt(monthly[11].endBudget)}</strong></span>
+                      </div>
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="mono">
+                        <thead>
+                          <tr>
+                            <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
+                            <th>Start</th>
+                            <th>Inflows</th>
+                            <th>Outflows</th>
+                            <th>Owner Draw</th>
+                            <th>Tax</th>
+                            <th style={{ color }}>Cash End</th>
+                            <th style={{ color: '#6B6252' }}>vs Current</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {monthly.map((row, m) => {
+                            const currentEnd = calculations.monthlyData[m]?.endBudget;
+                            const diff = currentEnd !== undefined ? row.endBudget - currentEnd : null;
+                            return (
+                              <tr key={row.month}>
+                                <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
+                                <td>{fmt(row.start)}</td>
+                                <td style={{ color: '#2D5A3D' }}>{fmt(row.totalIn)}</td>
+                                <td style={{ color: '#8B2A1C' }}>({fmt(row.totalOut).replace('$','').replace('(','').replace(')','')})</td>
+                                <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
+                                <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
+                                <td style={{ fontWeight: 600, color: row.endBudget < 0 ? '#8B2A1C' : color }}>{fmt(row.endBudget)}</td>
+                                <td style={{ fontSize: '12px', color: diff === null || diff === 0 ? '#6B6252' : diff > 0 ? '#2D5A3D' : '#8B2A1C' }}>
+                                  {diff === null ? '—' : diff === 0 ? 'same' : `${diff > 0 ? '+' : ''}${fmtCompact(diff)}`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Comparison table */}
               <div>
