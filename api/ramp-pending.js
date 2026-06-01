@@ -1,7 +1,7 @@
 export default async function handler(req, res) {
   // Origin header is scheme+host only — strip any path from FRONTEND_URL
   const frontendUrl = process.env.FRONTEND_URL || 'https://taylor634.github.io/cash-flow-dashboard';
-  const origin = new URL(frontendUrl).origin; // e.g. "https://taylor634.github.io"
+  const origin = new URL(frontendUrl).origin;
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization');
@@ -18,41 +18,49 @@ export default async function handler(req, res) {
   const token = auth.slice(7);
 
   try {
-    const allBills = [];
+    // Fetch all bills in one call (no status filter to avoid 422 errors)
+    // Then filter client-side for pending/uncleared statuses
+    const PENDING_STATUSES = new Set([
+      'APPROVED',
+      'PAYMENT_PROCESSING',
+      'PAYMENT_IN_TRANSIT',
+      'APPROVAL_NEEDED',
+    ]);
 
-    // Fetch bills that are approved/scheduled but not yet cleared from the bank
-    for (const status of ['APPROVED', 'PAYMENT_PROCESSING']) {
-      let cursor = null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-      do {
-        const url = new URL('https://api.ramp.com/developer/v1/bills');
-        url.searchParams.set('status', status);
-        url.searchParams.set('page_size', '100');
-        if (cursor) url.searchParams.set('start', cursor);
+    let allBills = [];
+    const url = new URL('https://api.ramp.com/developer/v1/bills');
+    url.searchParams.set('page_size', '100');
 
-        const r = await fetch(url.toString(), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/json',
-          },
-        });
+    const r = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
 
-        if (r.status === 401) {
-          return res.status(401).json({ error: 'Ramp token expired — please reconnect.' });
-        }
+    clearTimeout(timeout);
 
-        if (!r.ok) {
-          console.error('Ramp API error:', r.status, await r.text());
-          break;
-        }
-
-        const data = await r.json();
-        if (data.data) allBills.push(...data.data);
-        cursor = data.page?.next || null;
-      } while (cursor);
+    if (r.status === 401) {
+      return res.status(401).json({ error: 'Ramp token expired — please reconnect.' });
     }
 
-    // Ramp bill amounts are in cents
+    if (!r.ok) {
+      const text = await r.text();
+      console.error('Ramp API error:', r.status, text);
+      return res.status(502).json({ error: `Ramp API returned ${r.status}: ${text.slice(0, 200)}` });
+    }
+
+    const data = await r.json();
+    const rawBills = data.data || data.bills || data.results || [];
+
+    // Filter to only bills that haven't cleared the bank yet
+    allBills = rawBills.filter(b => PENDING_STATUSES.has(b.status));
+
+    // Normalize amounts — Ramp stores amounts in cents
     const bills = allBills.map(b => ({
       id: b.id,
       vendor: b.vendor?.name || b.counterparty_name || b.description || 'Unknown',
@@ -63,7 +71,11 @@ export default async function handler(req, res) {
 
     const total = bills.reduce((sum, b) => sum + b.amount, 0);
     return res.json({ bills, total, count: bills.length });
+
   } catch (err) {
+    if (err.name === 'AbortError') {
+      return res.status(504).json({ error: 'Ramp API timed out. Try again.' });
+    }
     return res.status(500).json({ error: err.message });
   }
 }
