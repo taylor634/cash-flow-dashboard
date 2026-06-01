@@ -941,7 +941,14 @@ export default function CashFlowDashboard() {
                   return (
                     <tr key={row.month}>
                       <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
-                      <td>{fmt(row.startBudget)}</td>
+                      <td>
+                        {fmt(row.startActual)}
+                        {row.startActual !== row.startBudget && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', color: '#9E9484' }}>
+                            bud: {fmtCompact(row.startBudget)}
+                          </div>
+                        )}
+                      </td>
                       <td>{fmt(row.inflowsBudget)}</td>
                       <td>({fmt(row.outflowsBudget - row.draw - row.tax).replace('$','').replace('(','').replace(')','')})</td>
                       <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
