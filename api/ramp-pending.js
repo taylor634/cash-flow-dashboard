@@ -57,8 +57,17 @@ export default async function handler(req, res) {
     const data = await r.json();
     const rawBills = data.data || data.bills || data.results || [];
 
-    // Filter to only bills that haven't cleared the bank yet
-    allBills = rawBills.filter(b => PENDING_STATUSES.has(b.status));
+    // Log all statuses seen so we can debug missing bills
+    const statusesSeen = [...new Set(rawBills.map(b => b.status))];
+    console.log('Ramp bills fetched:', rawBills.length, 'Statuses:', statusesSeen);
+    rawBills.forEach(b => {
+      const vendor = b.vendor?.name || b.counterparty_name || b.description || 'Unknown';
+      console.log(`  Bill: ${vendor} | status: ${b.status} | amount: ${b.amount}`);
+    });
+
+    // Show everything that hasn't been fully paid or cancelled
+    const EXCLUDED_STATUSES = new Set(['PAID', 'CANCELLED', 'REJECTED', 'VOIDED']);
+    allBills = rawBills.filter(b => !EXCLUDED_STATUSES.has(b.status));
 
     // Normalize amounts — Ramp stores amounts in cents
     const bills = allBills.map(b => ({
