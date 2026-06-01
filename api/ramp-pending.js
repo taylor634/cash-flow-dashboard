@@ -1,5 +1,7 @@
 export default async function handler(req, res) {
-  const origin = process.env.FRONTEND_URL || 'https://taylor634.github.io';
+  // Origin header is scheme+host only — strip any path from FRONTEND_URL
+  const frontendUrl = process.env.FRONTEND_URL || 'https://taylor634.github.io/cash-flow-dashboard';
+  const origin = new URL(frontendUrl).origin; // e.g. "https://taylor634.github.io"
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization');
