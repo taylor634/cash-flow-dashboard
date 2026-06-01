@@ -918,7 +918,7 @@ export default function CashFlowDashboard() {
               <tbody>
                 {calculations.monthlyData.map((row) => {
                   const actualEnd = actualEnding[row.monthIdx];
-                  const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endBudget : null;
+                  const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endActualProjected : null;
 
                   // Ramp bills whose payment date (due_date) falls in THIS month
                   // — the payment date in Ramp IS when it clears the bank
@@ -953,7 +953,14 @@ export default function CashFlowDashboard() {
                       <td>({fmt(row.outflowsBudget - row.draw - row.tax).replace('$','').replace('(','').replace(')','')})</td>
                       <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                       <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
-                      <td style={{ fontWeight: 600 }}>{fmt(row.endBudget)}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {fmt(row.endActualProjected)}
+                        {row.endActualProjected !== row.endBudget && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', color: '#9E9484' }}>
+                            bud: {fmtCompact(row.endBudget)}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ borderLeft: '2px solid #E8E0D0', minWidth: '130px' }}>
                         <input
                           type="number"
