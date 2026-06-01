@@ -912,12 +912,32 @@ export default function CashFlowDashboard() {
                   <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
                   <th>Start</th><th>Inflows</th><th>Outflows</th><th>Owner Draw</th><th>Tax</th><th>Cash End</th>
                   <th style={{ color: '#2A5298', borderLeft: '2px solid #E8E0D0' }}>Actual (Bank)</th>
+                  <th style={{ color: '#2A5298', borderLeft: '1px solid #E8E0D0' }}>Actual End</th>
+                  {rampBills && <th style={{ color: '#7B5B00', borderLeft: '2px solid #E8E0D0', minWidth: '120px' }}>Prior Mo. Bills</th>}
                 </tr>
               </thead>
               <tbody>
                 {calculations.monthlyData.map((row) => {
                   const actual = actualBeginning[row.monthIdx];
                   const variance = actual !== null && actual !== undefined ? actual - row.startBudget : null;
+                  const actualEnd = actualEnding[row.monthIdx];
+                  const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endBudget : null;
+
+                  // Prior month bills: Ramp bills whose due_date falls in the PREVIOUS month
+                  // (bills scheduled last month that will clear THIS month's bank account)
+                  let priorBills = [];
+                  if (rampBills?.bills) {
+                    const prevMonthIdx = row.monthIdx - 1;
+                    const prevYear = prevMonthIdx < 0 ? activeYear - 1 : activeYear;
+                    const prevMonth = prevMonthIdx < 0 ? 11 : prevMonthIdx; // 0-based
+                    priorBills = rampBills.bills.filter(b => {
+                      if (!b.due_date) return false;
+                      const d = new Date(b.due_date);
+                      return d.getFullYear() === prevYear && d.getMonth() === prevMonth;
+                    });
+                  }
+                  const priorTotal = priorBills.reduce((s, b) => s + (b.amount || 0), 0);
+
                   return (
                     <tr key={row.month}>
                       <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
@@ -945,6 +965,45 @@ export default function CashFlowDashboard() {
                           </div>
                         )}
                       </td>
+                      <td style={{ borderLeft: '1px solid #E8E0D0', minWidth: '130px' }}>
+                        <input
+                          type="number"
+                          value={actualEnd ?? ''}
+                          onChange={e => {
+                            const v = e.target.value === '' ? null : Number(e.target.value);
+                            setActualEnding(prev => prev.map((x, i) => i === row.monthIdx ? v : x));
+                          }}
+                          placeholder="—"
+                          className="edit"
+                          style={{ color: '#2A5298', fontWeight: 500 }}
+                        />
+                        {endVariance !== null && (
+                          <div style={{ fontSize: '10px', marginTop: '2px', color: endVariance >= 0 ? '#2D5A3D' : '#8B2A1C' }}>
+                            {endVariance >= 0 ? '+' : ''}{fmtCompact(endVariance)} vs budget
+                          </div>
+                        )}
+                      </td>
+                      {rampBills && (
+                        <td style={{ borderLeft: '2px solid #E8E0D0', fontSize: '12px', verticalAlign: 'top', paddingTop: '8px' }}>
+                          {priorBills.length === 0 ? (
+                            <span style={{ color: '#9E9484' }}>—</span>
+                          ) : (
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#7B5B00', marginBottom: '2px' }}>
+                                ({fmt(priorTotal)})
+                              </div>
+                              {priorBills.slice(0, 3).map(b => (
+                                <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '110px' }}>
+                                  {b.vendor}: {fmt(b.amount)}
+                                </div>
+                              ))}
+                              {priorBills.length > 3 && (
+                                <div style={{ color: '#9E9484', fontSize: '11px' }}>+{priorBills.length - 3} more</div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
