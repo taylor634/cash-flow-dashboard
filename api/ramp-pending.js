@@ -78,13 +78,30 @@ export default async function handler(req, res) {
       return 0;
     };
 
-    const bills = allBills.map(b => ({
-      id: b.id,
-      vendor: b.vendor?.name || b.counterparty_name || b.description || 'Unknown',
-      amount: parseAmount(b),
-      due_date: b.due_at || b.due_date || null,
-      status: b.status,
-    }));
+    const bills = allBills.map(b => {
+      // Pick the best available date for "when does this clear the bank"
+      // Ramp uses various field names depending on bill type and status:
+      // scheduled_at / payment_date = when payment is actually scheduled to go out
+      // due_at / due_date = when the bill is due
+      const paymentDate =
+        b.scheduled_at ||
+        b.payment_date ||
+        b.scheduled_payment_date ||
+        b.paid_at ||
+        b.due_at ||
+        b.due_date ||
+        null;
+
+      return {
+        id: b.id,
+        vendor: b.vendor?.name || b.counterparty_name || b.description || 'Unknown',
+        amount: parseAmount(b),
+        due_date: paymentDate,   // front-end uses this field for month placement
+        scheduled_at: b.scheduled_at || null,
+        payment_date: b.payment_date || b.scheduled_payment_date || null,
+        status: b.status,
+      };
+    });
 
     const total = bills.reduce((sum, b) => sum + b.amount, 0);
     return res.json({ bills, total, count: bills.length });

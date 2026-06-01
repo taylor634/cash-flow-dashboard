@@ -996,12 +996,23 @@ export default function CashFlowDashboard() {
                             )}
                             {rampThisMonth.length > 0 && (
                               <div>
-                                {priorAccrued > 0 && <div style={{ color: '#9E9484', fontSize: '11px', marginTop: '3px', marginBottom: '2px' }}>Ramp payments:</div>}
-                                {rampThisMonth.slice(0, 4).map(b => (
-                                  <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>
-                                    {b.vendor}: ({fmt(b.amount)})
-                                  </div>
-                                ))}
+                                {priorAccrued > 0 && <div style={{ color: '#9E9484', fontSize: '11px', marginTop: '3px', marginBottom: '2px' }}>Ramp scheduled:</div>}
+                                {rampThisMonth.slice(0, 4).map(b => {
+                                  const statusLabel = {
+                                    APPROVED: 'Scheduled',
+                                    PAYMENT_PROCESSING: 'Processing',
+                                    PAYMENT_IN_TRANSIT: 'In Transit',
+                                    APPROVAL_NEEDED: 'Pending',
+                                  }[b.status] || b.status;
+                                  return (
+                                    <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', marginBottom: '1px' }}>
+                                      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>
+                                        {b.vendor}: ({fmt(b.amount)})
+                                      </div>
+                                      <div style={{ color: '#9E9484', fontSize: '10px' }}>{statusLabel}</div>
+                                    </div>
+                                  );
+                                })}
                                 {rampThisMonth.length > 4 && (
                                   <div style={{ color: '#9E9484', fontSize: '11px' }}>+{rampThisMonth.length - 4} more</div>
                                 )}
