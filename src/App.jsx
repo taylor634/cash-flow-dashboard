@@ -6,7 +6,7 @@ import { Upload, Plus, Trash2, AlertCircle, TrendingDown, TrendingUp, FileSpread
 // ─── Ramp API proxy URL ───────────────────────────────────────────────────────
 // After you deploy to Vercel, replace this with your actual Vercel project URL.
 // Example: 'https://cash-flow-dashboard-api.vercel.app'
-const RAMP_API_BASE = 'PENDING_VERCEL_URL';
+const RAMP_API_BASE = 'https://cashflow-dash-api.vercel.app';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
