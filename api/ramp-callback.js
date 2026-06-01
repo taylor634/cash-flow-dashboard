@@ -9,19 +9,27 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Ramp requires client credentials as HTTP Basic Auth
+    const credentials = Buffer.from(
+      `${process.env.RAMP_CLIENT_ID}:${process.env.RAMP_CLIENT_SECRET}`
+    ).toString('base64');
+
     const resp = await fetch('https://api.ramp.com/developer/v1/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${credentials}`,
+      },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
         redirect_uri: process.env.RAMP_REDIRECT_URI,
-        client_id: process.env.RAMP_CLIENT_ID,
-        client_secret: process.env.RAMP_CLIENT_SECRET,
       }),
     });
 
-    const data = await resp.json();
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { error: text }; }
 
     if (data.access_token) {
       const expires = Date.now() + (data.expires_in || 3600) * 1000;
@@ -30,8 +38,13 @@ export default async function handler(req, res) {
       );
     }
 
+    // Show a readable error message
+    const errMsg = typeof data.error === 'string'
+      ? data.error
+      : (data.error_description || data.message || JSON.stringify(data));
+
     return res.redirect(
-      `${frontendUrl}#ramp_error=${encodeURIComponent(data.error || 'token_exchange_failed')}`
+      `${frontendUrl}#ramp_error=${encodeURIComponent(errMsg)}`
     );
   } catch (err) {
     return res.redirect(
