@@ -7,10 +7,14 @@ export default function handler(req, res) {
     );
   }
 
+  const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
   const params = new URLSearchParams({
     client_id: RAMP_CLIENT_ID,
     redirect_uri: RAMP_REDIRECT_URI,
     response_type: 'code',
+    scope: 'bills:read',
+    state,
   });
 
   res.redirect(`https://app.ramp.com/v1/authorize?${params}`);
