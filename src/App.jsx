@@ -453,7 +453,7 @@ export default function CashFlowDashboard() {
       // 2) Accrued expenses entered for the PRIOR month (they clear this month)
       const todayMonth = new Date().getMonth();
       const todayYear = new Date().getFullYear();
-      const rampThisMonth = rampBills?.bills?.filter(b => {
+      const rampThisMonth = rampBills?.filter(b => {
         if (!b.due_date) {
           // Bills with no date set in Ramp — place in the current calendar month
           return activeYear === todayYear && m === todayMonth;
