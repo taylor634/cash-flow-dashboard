@@ -50,6 +50,7 @@ export default function CashFlowDashboard() {
   const [actualEnding, setActualEnding] = useState(Array(12).fill(null));
   const [actualBeginning, setActualBeginning] = useState(Array(12).fill(null));
   const [editingDraw, setEditingDraw] = useState(false);
+  const [payrollByMonth, setPayrollByMonth] = useState(Array(12).fill(0));
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState(null);
@@ -87,6 +88,7 @@ export default function CashFlowDashboard() {
             if (state.ownersDraw)    setOwnersDraw(state.ownersDraw);
             if (state.taxPayments)   setTaxPayments(state.taxPayments);
             if (state.customItems)   setCustomItems(state.customItems);
+            if (state.payrollByMonth) setPayrollByMonth(state.payrollByMonth);
             if (state.actualEnding)  setActualEnding(state.actualEnding);
             if (state.accruedByMonth) setAccruedByMonth(state.accruedByMonth);
             if (state.rampBills)     setRampBills(state.rampBills);
@@ -111,7 +113,7 @@ export default function CashFlowDashboard() {
       try {
         const state = {
           qbData, fileName, parseInfo, startingCash,
-          ownersDraw, taxPayments, customItems,
+          ownersDraw, taxPayments, customItems, payrollByMonth,
           actualEnding, actualBeginning, accruedByMonth, rampBills, scenarios,
         };
         const r = await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`, {
@@ -129,7 +131,7 @@ export default function CashFlowDashboard() {
     };
     const t = setTimeout(saveAll, 1000);
     return () => clearTimeout(t);
-  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, actualBeginning, accruedByMonth, rampBills, scenarios, activeYear, isLoaded]);
+  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, payrollByMonth, actualEnding, actualBeginning, accruedByMonth, rampBills, scenarios, activeYear, isLoaded]);
 
   const resetStateToDefaults = () => {
     setQbData(null);
@@ -142,6 +144,7 @@ export default function CashFlowDashboard() {
     setActualEnding(Array(12).fill(null));
     setActualBeginning(Array(12).fill(null));
     setAccruedByMonth(Array(12).fill(0));
+    setPayrollByMonth(Array(12).fill(0));
     setRampBills([]);
     setScenarios([]);
     setLastSavedAt(null);
@@ -358,9 +361,13 @@ export default function CashFlowDashboard() {
         }
       }
       if (!hasAnyValue) continue;
-      const target = currentSection === 'income' ? inflows : outflows;
-      for (let m = 0; m < 12; m++) target.budget[m] += monthly[m];
-      lineItems.push({ label, section: currentSection, budget: monthly });
+      const isPayroll = currentSection === 'expense' && /payroll/i.test(label);
+      if (currentSection === 'income') {
+        for (let m = 0; m < 12; m++) inflows.budget[m] += monthly[m];
+      } else if (!isPayroll) {
+        for (let m = 0; m < 12; m++) outflows.budget[m] += monthly[m];
+      }
+      lineItems.push({ label, section: currentSection, budget: monthly, isPayroll: isPayroll || false });
     }
 
     const totalBudget = inflows.budget.reduce((s, v) => s + v, 0) + outflows.budget.reduce((s, v) => s + v, 0);
@@ -401,8 +408,9 @@ export default function CashFlowDashboard() {
         if (item.type === 'inflow') customIn += v;
         else customOut += v;
       });
+      const payroll = Number(payrollByMonth[m]) || 0;
       const totalIn = qbIn + customIn;
-      const totalOut = qbOut + drawTotal + taxThisMonth + customOut;
+      const totalOut = qbOut + drawTotal + taxThisMonth + customOut + payroll;
       const startBudget = runningBudget;
       const startActual = runningActual;
 
@@ -453,7 +461,7 @@ export default function CashFlowDashboard() {
         qbIn, qbOut, inflowsBudget: totalIn, outflowsBudget: totalOut,
         draw: drawTotal, tax: taxThisMonth, customIn, customOut,
         endBudget, endActual, endActualProjected, bankBalance, variance,
-        hasActual: endActual !== null,
+        hasActual: endActual !== null, payroll,
         clearingTotal, rampClearingThisMonth, rampPendingAmt, priorAccrued,
       });
 
@@ -467,7 +475,7 @@ export default function CashFlowDashboard() {
     const lowestMonth = monthlyData.reduce((min, m) => m.endBudget < min.endBudget ? m : min, monthlyData[0]);
 
     return { monthlyData, ytdInflowsBudget, ytdOutflowsBudget, netBudget, lowestMonth };
-  }, [qbData, startingCash, ownersDraw, taxPayments, customItems, actualEnding, accruedByMonth, rampBills, activeYear]);
+  }, [qbData, startingCash, ownersDraw, taxPayments, customItems, payrollByMonth, actualEnding, accruedByMonth, rampBills, activeYear]);
 
   const updateDraw = (category, monthIdx, value) => {
     setOwnersDraw(prev => ({
@@ -928,7 +936,7 @@ export default function CashFlowDashboard() {
               <thead>
                 <tr>
                   <th style={{ fontFamily: 'Source Sans 3, sans-serif' }}>Month</th>
-                  <th>Start</th><th>Inflows</th><th>Outflows</th><th>Owner Draw</th><th>Tax</th><th>Cash End</th>
+                  <th>Start</th><th>Inflows</th><th>Outflows</th><th>Payroll</th><th>Owner Draw</th><th>Tax</th><th>Cash End</th>
                   <th style={{ color: '#2A5298', borderLeft: '2px solid #E8E0D0' }}>Actual End</th>
                   <th style={{ color: '#7B5B00', borderLeft: '2px solid #E8E0D0', minWidth: '140px' }}>Clears Bank This Mo.</th>
                 </tr>
@@ -974,7 +982,20 @@ export default function CashFlowDashboard() {
                           </div>
                         </details>
                       </td>
-                      <td>({fmt(row.outflowsBudget - row.draw - row.tax).replace('$','').replace('(','').replace(')','')})</td>
+                      <td>({fmt(row.outflowsBudget - row.draw - row.tax - row.payroll).replace('$','').replace('(','').replace(')','')})</td>
+                      <td style={{ minWidth: '110px' }}>
+                        <input
+                          type="number"
+                          value={payrollByMonth[row.monthIdx] || ''}
+                          onChange={e => {
+                            const v = Number(e.target.value) || 0;
+                            setPayrollByMonth(prev => prev.map((x, i) => i === row.monthIdx ? v : x));
+                          }}
+                          placeholder="0"
+                          className="edit"
+                          style={{ color: '#8B2A1C' }}
+                        />
+                      </td>
                       <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                       <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
                       <td style={{ fontWeight: 600 }}>
