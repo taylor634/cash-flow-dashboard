@@ -729,7 +729,7 @@ export default function CashFlowDashboard() {
           const reconRow = calculations.monthlyData[reconMonth];
           const rampTotal = rampBills?.reduce((s, b) => s + b.amount, 0) ?? 0;
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
-          const adjustedBalance = reconRow ? reconRow.endBudget + rampTotal + accrued : null;
+          const adjustedBalance = reconRow ? reconRow.endActualProjected + rampTotal + accrued : null;
           const rampReady = RAMP_API_BASE !== 'PENDING_VERCEL_URL';
 
           return (
@@ -756,7 +756,7 @@ export default function CashFlowDashboard() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid #E8E0D0' }}>
                       <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>Cash Flow Ending Balance ({MONTHS[reconMonth]})</span>
-                      <span className="mono" style={{ fontSize: '14px', fontWeight: 600 }}>{reconRow ? fmt(reconRow.endBudget) : '—'}</span>
+                      <span className="mono" style={{ fontSize: '14px', fontWeight: 600 }}>{reconRow ? fmt(reconRow.endActualProjected) : '—'}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E8E0D0' }}>
                       <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>
