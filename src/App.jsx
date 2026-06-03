@@ -433,29 +433,48 @@ export default function CashFlowDashboard() {
       const startBudget = runningBudget;
       const startActual = runningActual;
 
-      // Amounts that clear the bank this month:
-      // 1) Ramp bills whose payment date falls in this month — BUT only for
-      //    FUTURE months. Current-month and past Ramp bills are already
-      //    included in the QB budget outflows, so don't double-count them.
-      // 2) Accrued expenses entered for the PRIOR month (they clear this month)
+      // Ramp bank timing adjustment:
+      //
+      // CURRENT month: QB has already counted future-dated Ramp bills as outflows,
+      //   but the bank hasn't paid them yet. So the bank balance is HIGHER than QB
+      //   shows. Add those future bills back to Cash End.
+      //
+      // FUTURE month M: When the payment actually clears, DEDUCT it from Cash End.
+      //
+      // PAST months: no adjustment (already reconciled via Actual End entries).
       const todayMonth = new Date().getMonth();
       const todayYear = new Date().getFullYear();
-      const isFutureMonth =
-        activeYear > todayYear ||
-        (activeYear === todayYear && m > todayMonth);
-      const rampThisMonth = isFutureMonth
-        ? (rampBills?.filter(b => {
-            if (!b.due_date) return false;
-            const d = new Date(b.due_date);
-            return d.getFullYear() === activeYear && d.getMonth() === m;
-          }) || [])
-        : [];
-      const rampThisTotal = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
+      const isCurrentMonth = activeYear === todayYear && m === todayMonth;
+      const isFutureMonth = activeYear > todayYear || (activeYear === todayYear && m > todayMonth);
+
+      let rampThisMonth = [];
+      let rampBankAdjustment = 0; // positive = ADD to Cash End, negative = DEDUCT
+
+      if (isCurrentMonth && rampBills) {
+        // Bills with a payment date AFTER this month are still sitting in the bank
+        rampThisMonth = rampBills.filter(b => {
+          if (!b.due_date) return false;
+          const d = new Date(b.due_date);
+          return d.getFullYear() > todayYear ||
+            (d.getFullYear() === todayYear && d.getMonth() > todayMonth);
+        });
+        rampBankAdjustment = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0); // add back
+      } else if (isFutureMonth && rampBills) {
+        // Bills scheduled to clear the bank this future month
+        rampThisMonth = rampBills.filter(b => {
+          if (!b.due_date) return false;
+          const d = new Date(b.due_date);
+          return d.getFullYear() === activeYear && d.getMonth() === m;
+        });
+        rampBankAdjustment = -rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0); // deduct
+      }
+
       const priorAccrued = m > 0 ? (accruedByMonth[m - 1] || 0) : 0;
-      const clearingTotal = rampThisTotal + priorAccrued;
+      const clearingTotal = Math.abs(rampBankAdjustment) + priorAccrued;
 
       const endBudget = startBudget + totalIn - totalOut;
-      const endActualProjected = startActual + totalIn - totalOut - clearingTotal;
+      // rampBankAdjustment: +amount means bank has more than QB (add), -amount means bank pays out (deduct)
+      const endActualProjected = startActual + totalIn - totalOut + rampBankAdjustment - priorAccrued;
       const endActual = actualEnding[m] !== null ? actualEnding[m] : null;
       const variance = endActual !== null ? endActual - endActualProjected : null;
 
@@ -465,7 +484,7 @@ export default function CashFlowDashboard() {
         draw: drawTotal, tax: taxThisMonth, customIn, customOut,
         endBudget, endActual, endActualProjected, variance,
         hasActual: endActual !== null,
-        clearingTotal, rampThisMonth, priorAccrued,
+        clearingTotal, rampThisMonth, rampBankAdjustment, priorAccrued, isCurrentMonth,
       });
 
       runningBudget = endBudget;
@@ -928,7 +947,7 @@ export default function CashFlowDashboard() {
                   const actualEnd = actualEnding[row.monthIdx];
                   const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endActualProjected : null;
 
-                  const { clearingTotal, rampThisMonth, priorAccrued } = row;
+                  const { clearingTotal, rampThisMonth, rampBankAdjustment, priorAccrued, isCurrentMonth } = row;
                   const hasClearing = clearingTotal > 0 || rampThisMonth.length > 0;
 
                   return (
@@ -977,20 +996,27 @@ export default function CashFlowDashboard() {
                           <span style={{ color: '#9E9484' }}>—</span>
                         ) : (
                           <div>
+                            {/* Summary line */}
                             {clearingTotal > 0 && (
-                              <div style={{ fontWeight: 600, color: '#7B5B00', marginBottom: '4px' }}>
-                                ({fmt(clearingTotal)}) total
+                              <div style={{ fontWeight: 600, color: isCurrentMonth ? '#2D5A3D' : '#7B5B00', marginBottom: '4px' }}>
+                                {isCurrentMonth ? `+${fmt(rampBankAdjustment)} in bank` : `(${fmt(clearingTotal)}) total`}
                               </div>
                             )}
+                            {/* Accrued from prior month (always a deduction) */}
                             {priorAccrued > 0 && (
                               <div style={{ fontSize: '11px', color: '#6B6252', marginBottom: '2px', paddingBottom: '3px', borderBottom: rampThisMonth.length > 0 ? '1px dashed #E8E0D0' : 'none' }}>
                                 <span style={{ color: '#9E9484' }}>Accrued (prev mo.):</span><br />
                                 ({fmt(priorAccrued)})
                               </div>
                             )}
+                            {/* Ramp bills */}
                             {rampThisMonth.length > 0 && (
                               <div>
-                                {priorAccrued > 0 && <div style={{ color: '#9E9484', fontSize: '11px', marginTop: '3px', marginBottom: '2px' }}>Ramp scheduled:</div>}
+                                {priorAccrued > 0 && (
+                                  <div style={{ color: '#9E9484', fontSize: '11px', marginTop: '3px', marginBottom: '2px' }}>
+                                    {isCurrentMonth ? 'Ramp (still in bank):' : 'Ramp scheduled:'}
+                                  </div>
+                                )}
                                 {rampThisMonth.slice(0, 4).map(b => {
                                   const statusLabel = {
                                     APPROVED: 'Scheduled',
@@ -1001,7 +1027,7 @@ export default function CashFlowDashboard() {
                                   return (
                                     <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', marginBottom: '1px' }}>
                                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>
-                                        {b.vendor}: ({fmt(b.amount)})
+                                        {isCurrentMonth ? '+' : ''}{b.vendor}: {isCurrentMonth ? fmt(b.amount) : `(${fmt(b.amount)})`}
                                       </div>
                                       <div style={{ color: '#9E9484', fontSize: '10px' }}>{statusLabel}</div>
                                     </div>
