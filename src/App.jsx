@@ -434,18 +434,22 @@ export default function CashFlowDashboard() {
       const startActual = runningActual;
 
       // Amounts that clear the bank this month:
-      // 1) Ramp bills whose payment date is this month
+      // 1) Ramp bills whose payment date falls in this month — BUT only for
+      //    FUTURE months. Current-month and past Ramp bills are already
+      //    included in the QB budget outflows, so don't double-count them.
       // 2) Accrued expenses entered for the PRIOR month (they clear this month)
       const todayMonth = new Date().getMonth();
       const todayYear = new Date().getFullYear();
-      const rampThisMonth = rampBills?.filter(b => {
-        if (!b.due_date) {
-          // Bills with no date set in Ramp — place in the current calendar month
-          return activeYear === todayYear && m === todayMonth;
-        }
-        const d = new Date(b.due_date);
-        return d.getFullYear() === activeYear && d.getMonth() === m;
-      }) || [];
+      const isFutureMonth =
+        activeYear > todayYear ||
+        (activeYear === todayYear && m > todayMonth);
+      const rampThisMonth = isFutureMonth
+        ? (rampBills?.filter(b => {
+            if (!b.due_date) return false;
+            const d = new Date(b.due_date);
+            return d.getFullYear() === activeYear && d.getMonth() === m;
+          }) || [])
+        : [];
       const rampThisTotal = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
       const priorAccrued = m > 0 ? (accruedByMonth[m - 1] || 0) : 0;
       const clearingTotal = rampThisTotal + priorAccrued;
