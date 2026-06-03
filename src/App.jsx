@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { Upload, Plus, Trash2, AlertCircle, TrendingDown, TrendingUp, FileSpreadsheet, Edit3, X, Link, RefreshCw, CheckCircle } from 'lucide-react';
+import { Upload, Plus, Trash2, AlertCircle, TrendingDown, TrendingUp, FileSpreadsheet, Edit3, X } from 'lucide-react';
 
 // ─── Ramp API proxy URL ───────────────────────────────────────────────────────
 // After you deploy to Vercel, replace this with your actual Vercel project URL.
@@ -60,12 +60,16 @@ export default function CashFlowDashboard() {
   const [newScenarioName, setNewScenarioName] = useState('');
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
 
-  // Ramp integration
-  const [rampToken, setRampToken] = useState(null);
-  const [rampBills, setRampBills] = useState(null); // null = not yet fetched
-  const [rampLoading, setRampLoading] = useState(false);
-  const [rampError, setRampError] = useState(null);
+  // Ramp bills — manually entered
+  const [rampBills, setRampBills] = useState([]);
   const [accruedByMonth, setAccruedByMonth] = useState(Array(12).fill(0));
+
+  // Manual bill entry form state
+  const [newBillVendor, setNewBillVendor] = useState('');
+  const [newBillAmount, setNewBillAmount] = useState('');
+  const [newBillPayDate, setNewBillPayDate] = useState('');
+  const [newBillDate, setNewBillDate] = useState('');
+  const [billFormError, setBillFormError] = useState('');
   const [reconMonth, setReconMonth] = useState(() => Math.max(0, new Date().getMonth() - 1));
 
   useEffect(() => {
@@ -85,6 +89,7 @@ export default function CashFlowDashboard() {
             if (state.customItems)   setCustomItems(state.customItems);
             if (state.actualEnding)  setActualEnding(state.actualEnding);
             if (state.accruedByMonth) setAccruedByMonth(state.accruedByMonth);
+            if (state.rampBills)     setRampBills(state.rampBills);
             if (state.scenarios)     setScenarios(state.scenarios);
             if (state.actualBeginning) setActualBeginning(state.actualBeginning);
             if (state.lastSavedAt)   setLastSavedAt(state.lastSavedAt);
@@ -97,31 +102,6 @@ export default function CashFlowDashboard() {
       }
     })();
 
-    // Ramp token stays local — it's a per-user OAuth token, not shared data
-    const storedToken = localStorage.getItem('cashflow:ramp_token');
-    const storedExpires = localStorage.getItem('cashflow:ramp_expires');
-    if (storedToken && (!storedExpires || Date.now() < Number(storedExpires))) {
-      setRampToken(storedToken);
-    }
-
-    // Handle OAuth callback: look for #ramp_token or #ramp_error in the URL hash
-    const hash = window.location.hash;
-    if (hash.includes('ramp_token=') || hash.includes('ramp_error=')) {
-      const params = new URLSearchParams(hash.slice(1));
-      const token = params.get('ramp_token');
-      const rampErr = params.get('ramp_error');
-      const expires = params.get('ramp_expires');
-      if (token) {
-        localStorage.setItem('cashflow:ramp_token', token);
-        if (expires) localStorage.setItem('cashflow:ramp_expires', expires);
-        setRampToken(token);
-      }
-      if (rampErr) {
-        setRampError(`Ramp connection failed: ${rampErr}`);
-      }
-      window.history.replaceState({}, '', window.location.pathname + window.location.search);
-    }
-
     return () => { cancelled = true; };
   }, [activeYear]);
 
@@ -132,7 +112,7 @@ export default function CashFlowDashboard() {
         const state = {
           qbData, fileName, parseInfo, startingCash,
           ownersDraw, taxPayments, customItems,
-          actualEnding, actualBeginning, accruedByMonth, scenarios,
+          actualEnding, actualBeginning, accruedByMonth, rampBills, scenarios,
         };
         const r = await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`, {
           method: 'POST',
@@ -149,7 +129,7 @@ export default function CashFlowDashboard() {
     };
     const t = setTimeout(saveAll, 1000);
     return () => clearTimeout(t);
-  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, actualBeginning, accruedByMonth, scenarios, activeYear, isLoaded]);
+  }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, actualBeginning, accruedByMonth, rampBills, scenarios, activeYear, isLoaded]);
 
   const resetStateToDefaults = () => {
     setQbData(null);
@@ -162,6 +142,7 @@ export default function CashFlowDashboard() {
     setActualEnding(Array(12).fill(null));
     setActualBeginning(Array(12).fill(null));
     setAccruedByMonth(Array(12).fill(0));
+    setRampBills([]);
     setScenarios([]);
     setLastSavedAt(null);
     setSavingScenario(false);
@@ -185,12 +166,35 @@ export default function CashFlowDashboard() {
     setActiveYear(year);     // triggers the load effect with new year's prefix
   };
 
-  const disconnectRamp = () => {
-    localStorage.removeItem('cashflow:ramp_token');
-    localStorage.removeItem('cashflow:ramp_expires');
-    setRampToken(null);
-    setRampBills(null);
-    setRampError(null);
+  const addRampBill = () => {
+    const vendor = newBillVendor.trim();
+    const amount = parseFloat(newBillAmount.replace(/[,$]/g, ''));
+    const payDate = newBillPayDate;
+
+    if (!vendor) { setBillFormError('Vendor name is required.'); return; }
+    if (!amount || isNaN(amount) || amount <= 0) { setBillFormError('Enter a valid amount.'); return; }
+    if (!payDate) { setBillFormError('Payment date is required.'); return; }
+
+    const newBill = {
+      id: Date.now(),
+      vendor,
+      amount,
+      due_date: payDate,           // payment date — when money leaves the bank
+      bill_date: newBillDate || null, // invoice/bill date (optional)
+      invoice_due_at: null,
+      status: 'MANUAL',
+    };
+
+    setRampBills(prev => [...prev, newBill]);
+    setNewBillVendor('');
+    setNewBillAmount('');
+    setNewBillPayDate('');
+    setNewBillDate('');
+    setBillFormError('');
+  };
+
+  const deleteRampBill = (id) => {
+    setRampBills(prev => prev.filter(b => b.id !== id));
   };
 
   // Compute full monthly breakdown from a scenario's saved inputs
@@ -253,31 +257,6 @@ export default function CashFlowDashboard() {
     setScenarios(prev => prev.filter(s => s.id !== id));
   };
 
-  const fetchRampBills = useCallback(async () => {
-    if (!rampToken || RAMP_API_BASE === 'PENDING_VERCEL_URL') return;
-    setRampLoading(true);
-    setRampError(null);
-    try {
-      const res = await fetch(`${RAMP_API_BASE}/api/ramp-pending`, {
-        headers: { Authorization: `Bearer ${rampToken}` },
-      });
-      if (res.status === 401) {
-        disconnectRamp();
-        setRampError('Session expired — please reconnect Ramp.');
-        return;
-      }
-      const data = await res.json();
-      if (data.error) {
-        setRampError(data.error);
-      } else {
-        setRampBills(data.bills || []);
-      }
-    } catch (err) {
-      setRampError('Could not reach API: ' + err.message);
-    } finally {
-      setRampLoading(false);
-    }
-  }, [rampToken]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -401,12 +380,6 @@ export default function CashFlowDashboard() {
     };
   };
 
-  // Auto-fetch bills when token becomes available
-  useEffect(() => {
-    if (rampToken && rampBills === null && RAMP_API_BASE !== 'PENDING_VERCEL_URL') {
-      fetchRampBills();
-    }
-  }, [rampToken, fetchRampBills]);
 
   const calculations = useMemo(() => {
     const monthlyData = [];
@@ -450,7 +423,7 @@ export default function CashFlowDashboard() {
       let rampThisMonth = [];
       let rampBankAdjustment = 0; // positive = ADD to Cash End, negative = DEDUCT
 
-      if (isCurrentMonth && rampBills) {
+      if (isCurrentMonth && rampBills.length > 0) {
         // Two groups show in the current month:
         // 1) Future-dated bills: payment date is AFTER this month — QB counted them
         //    as outflows already but the bank hasn't paid yet (add back to bank balance)
@@ -468,7 +441,7 @@ export default function CashFlowDashboard() {
           return isOverdue || isFuture;
         });
         rampBankAdjustment = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0); // add back
-      } else if (isFutureMonth && rampBills) {
+      } else if (isFutureMonth && rampBills.length > 0) {
         // Bills scheduled to clear the bank this future month
         rampThisMonth = rampBills.filter(b => {
           if (!b.due_date) return false;
@@ -728,12 +701,10 @@ export default function CashFlowDashboard() {
         {activeYear > new Date().getFullYear() ? null : (() => {
           const reconRow = calculations.monthlyData[reconMonth];
           // Include a bill in this month's reconciliation only if:
-          // 1) The invoice belongs to this month or earlier — derived from invoice_due_at
-          //    (Ramp's due_at ≈ invoice date + 30 days, so invoice month ≈ due_at month - 1)
-          //    If no due_at, fall back to bill_date, otherwise include it.
+          // 1) The invoice/bill date is in this month or earlier
           // 2) The payment date is AFTER this month (hasn't cleared the bank yet)
-          const reconBills = rampBills?.filter(b => {
-            // Check payment date is after reconMonth
+          const reconBills = rampBills.filter(b => {
+            // Payment must be after reconMonth
             if (!b.due_date) return false;
             const payDate = new Date(b.due_date);
             const payAfterMonth =
@@ -741,28 +712,18 @@ export default function CashFlowDashboard() {
               (payDate.getFullYear() === activeYear && payDate.getMonth() > reconMonth);
             if (!payAfterMonth) return false;
 
-            // Check invoice belongs to reconMonth or earlier
+            // Invoice/bill date must be this month or earlier
             if (b.bill_date) {
               const bd = new Date(b.bill_date);
               return bd.getFullYear() < activeYear ||
                 (bd.getFullYear() === activeYear && bd.getMonth() <= reconMonth);
             }
-            if (b.invoice_due_at) {
-              // invoice month ≈ due_at month - 1
-              const dueAt = new Date(b.invoice_due_at);
-              const invoiceMonth = dueAt.getMonth() === 0 ? 11 : dueAt.getMonth() - 1;
-              const invoiceYear = dueAt.getMonth() === 0 ? dueAt.getFullYear() - 1 : dueAt.getFullYear();
-              return invoiceYear < activeYear ||
-                (invoiceYear === activeYear && invoiceMonth <= reconMonth);
-            }
-            // No invoice date info (old cached data) — include rather than silently drop.
-            // Hitting Refresh on Ramp will fetch invoice_due_at and filter correctly.
+            // No bill date entered — include it (payment is after month, invoice unknown)
             return true;
-          }) ?? [];
+          });
           const rampTotal = reconBills.reduce((s, b) => s + b.amount, 0);
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
           const adjustedBalance = reconRow ? reconRow.endActualProjected + rampTotal + accrued : null;
-          const rampReady = RAMP_API_BASE !== 'PENDING_VERCEL_URL';
 
           return (
             <section className="card" style={{ marginBottom: '32px', borderLeft: '3px solid #1A1A1A' }}>
@@ -793,14 +754,14 @@ export default function CashFlowDashboard() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E8E0D0' }}>
                       <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>
                         + Ramp Scheduled Payments
-                        {rampBills !== null && reconBills.length > 0 && (
+                        {reconBills.length > 0 && (
                           <span style={{ marginLeft: '8px', fontSize: '11px', color: '#2D5A3D', background: '#E8F0E8', padding: '2px 6px', borderRadius: '2px' }}>
                             {reconBills.length} bill{reconBills.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </span>
-                      <span className="mono" style={{ fontSize: '14px', color: rampBills !== null ? '#2D5A3D' : '#B8AE98' }}>
-                        {rampBills !== null ? (rampTotal > 0 ? `+${fmt(rampTotal)}` : '—') : '—'}
+                      <span className="mono" style={{ fontSize: '14px', color: '#2D5A3D' }}>
+                        {rampTotal > 0 ? `+${fmt(rampTotal)}` : '—'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '2px solid #1A1A1A' }}>
@@ -835,94 +796,96 @@ export default function CashFlowDashboard() {
                   </div>
                 </div>
 
-                {/* Right: Ramp connection + bill list */}
+                {/* Right: manual Ramp bill entry + list */}
                 <div>
                   <div style={{ fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#6B6252', marginBottom: '12px' }}>
                     Ramp Pending Payments
                   </div>
 
-                  {!rampReady ? (
-                    <div style={{ padding: '20px', background: '#F5F1EA', border: '1px dashed #B8AE98', textAlign: 'center' }}>
-                      <div style={{ fontSize: '13px', color: '#6B6252', marginBottom: '12px', lineHeight: 1.5 }}>
-                        Vercel deployment required to connect Ramp.<br />
-                        <span style={{ fontSize: '11px' }}>See setup instructions below.</span>
+                  {/* Add bill form */}
+                  <div style={{ background: '#F5F1EA', border: '1px solid #E8E0D0', padding: '14px', marginBottom: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                      <input
+                        placeholder="Vendor"
+                        value={newBillVendor}
+                        onChange={e => setNewBillVendor(e.target.value)}
+                        style={{ padding: '6px 10px', fontSize: '12px', border: '1px solid #B8AE98', background: '#FDFBF6', fontFamily: 'Source Sans 3, sans-serif', gridColumn: '1 / -1' }}
+                      />
+                      <input
+                        placeholder="Amount"
+                        value={newBillAmount}
+                        onChange={e => setNewBillAmount(e.target.value)}
+                        style={{ padding: '6px 10px', fontSize: '12px', border: '1px solid #B8AE98', background: '#FDFBF6', fontFamily: 'Source Sans 3, sans-serif' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '10px', color: '#6B6252', marginBottom: '2px', letterSpacing: '0.05em' }}>Payment Date *</div>
+                        <input
+                          type="date"
+                          value={newBillPayDate}
+                          onChange={e => setNewBillPayDate(e.target.value)}
+                          style={{ padding: '6px 10px', fontSize: '12px', border: '1px solid #B8AE98', background: '#FDFBF6', fontFamily: 'Source Sans 3, sans-serif', width: '100%', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <div style={{ fontSize: '10px', color: '#6B6252', marginBottom: '2px', letterSpacing: '0.05em' }}>Bill / Invoice Date (optional)</div>
+                        <input
+                          type="date"
+                          value={newBillDate}
+                          onChange={e => setNewBillDate(e.target.value)}
+                          style={{ padding: '6px 10px', fontSize: '12px', border: '1px solid #B8AE98', background: '#FDFBF6', fontFamily: 'Source Sans 3, sans-serif', width: '100%', boxSizing: 'border-box' }}
+                        />
                       </div>
                     </div>
-                  ) : !rampToken ? (
-                    <div style={{ padding: '20px', background: '#F5F1EA', border: '1px dashed #B8AE98', textAlign: 'center' }}>
-                      <div style={{ fontSize: '13px', color: '#6B6252', marginBottom: '16px', lineHeight: 1.5 }}>
-                        Connect Ramp to automatically pull<br />scheduled payments.
-                      </div>
-                      <a
-                        href={`${RAMP_API_BASE}/api/ramp-auth`}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#1A1A1A', color: '#FDFBF6', padding: '10px 20px', fontSize: '12px', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase', textDecoration: 'none', fontFamily: 'Source Sans 3, sans-serif' }}
-                      >
-                        <Link size={13} />
-                        Connect Ramp
-                      </a>
-                      {rampError && (
-                        <div style={{ marginTop: '12px', fontSize: '12px', color: '#8B2A1C' }}>{rampError}</div>
-                      )}
+                    {billFormError && (
+                      <div style={{ fontSize: '11px', color: '#8B2A1C', marginBottom: '8px' }}>{billFormError}</div>
+                    )}
+                    <button
+                      onClick={addRampBill}
+                      style={{ background: '#1A1A1A', color: '#FDFBF6', border: 'none', padding: '7px 16px', fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Source Sans 3, sans-serif', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Plus size={11} /> Add Bill
+                    </button>
+                  </div>
+
+                  {/* Bill list */}
+                  {rampBills.length === 0 ? (
+                    <div style={{ padding: '16px', background: '#F5F1EA', fontSize: '13px', color: '#6B6252', textAlign: 'center', fontStyle: 'italic' }}>
+                      No bills entered yet.
                     </div>
                   ) : (
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#2D5A3D' }}>
-                          <CheckCircle size={14} />
-                          Connected
-                        </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            onClick={fetchRampBills}
-                            disabled={rampLoading}
-                            style={{ background: 'none', border: '1px solid #B8AE98', padding: '4px 10px', fontSize: '11px', letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'Source Sans 3, sans-serif' }}
-                          >
-                            <RefreshCw size={11} style={{ animation: rampLoading ? 'spin 1s linear infinite' : 'none' }} />
-                            {rampLoading ? 'Loading…' : 'Refresh'}
-                          </button>
-                          <button
-                            onClick={disconnectRamp}
-                            style={{ background: 'none', border: 'none', padding: '4px 8px', fontSize: '11px', letterSpacing: '0.05em', textTransform: 'uppercase', cursor: 'pointer', color: '#8B2A1C', fontFamily: 'Source Sans 3, sans-serif' }}
-                          >
-                            Disconnect
-                          </button>
-                        </div>
-                      </div>
-
-                      {rampError && (
-                        <div style={{ marginBottom: '12px', padding: '10px 14px', background: '#FEF0EE', borderLeft: '3px solid #8B2A1C', fontSize: '12px', color: '#8B2A1C' }}>
-                          {rampError}
-                        </div>
-                      )}
-
-                      {rampBills !== null && (
-                        reconBills.length === 0 ? (
-                          <div style={{ padding: '16px', background: '#F5F1EA', fontSize: '13px', color: '#6B6252', textAlign: 'center', fontStyle: 'italic' }}>
-                            No unpaid Ramp bills clearing after {MONTHS[reconMonth]}.
-                          </div>
-                        ) : (
-                          <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #E8E0D0' }}>
-                            {reconBills.map((bill) => (
-                              <div key={bill.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #F0E9D8', fontSize: '12px' }}>
-                                <div>
-                                  <div style={{ fontWeight: 500 }}>{bill.vendor}</div>
-                                  {bill.due_date && (
-                                    <div style={{ fontSize: '11px', color: '#6B6252', marginTop: '2px' }}>
-                                      Pays {new Date(bill.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                    </div>
-                                  )}
-                                </div>
-                                <span className="mono" style={{ color: '#8B2A1C', fontWeight: 500 }}>
-                                  ({fmt(bill.amount)})
+                    <div style={{ border: '1px solid #E8E0D0' }}>
+                      {rampBills.map((bill) => (
+                        <div key={bill.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #F0E9D8', fontSize: '12px' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 500 }}>{bill.vendor}</div>
+                            <div style={{ fontSize: '11px', color: '#6B6252', marginTop: '2px' }}>
+                              Pays {bill.due_date ? new Date(bill.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                              {bill.bill_date && (
+                                <span style={{ marginLeft: '8px' }}>
+                                  · Billed {new Date(bill.bill_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                 </span>
-                              </div>
-                            ))}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#F5F1EA', fontSize: '12px', fontWeight: 600 }}>
-                              <span>Total Pending</span>
-                              <span className="mono" style={{ color: '#8B2A1C' }}>({fmt(rampTotal)})</span>
+                              )}
                             </div>
                           </div>
-                        )
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span className="mono" style={{ color: '#8B2A1C', fontWeight: 500 }}>
+                              ({fmt(bill.amount)})
+                            </span>
+                            <button
+                              onClick={() => deleteRampBill(bill.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B8AE98', padding: '2px', display: 'flex', alignItems: 'center' }}
+                              title="Remove bill"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {reconBills.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', background: '#F5F1EA', fontSize: '12px', fontWeight: 600 }}>
+                          <span>Clearing after {MONTHS[reconMonth]}</span>
+                          <span className="mono" style={{ color: '#8B2A1C' }}>({fmt(rampTotal)})</span>
+                        </div>
                       )}
                     </div>
                   )}
@@ -931,8 +894,6 @@ export default function CashFlowDashboard() {
             </section>
           );
         })()}
-
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
         {calculations.lowestMonth && calculations.lowestMonth.endBudget < 200000 && (
           <div className="trough-warn" style={{ marginBottom: '32px' }}>
