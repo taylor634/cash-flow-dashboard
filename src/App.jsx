@@ -72,34 +72,32 @@ export default function CashFlowDashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const keys = ['qbData', 'fileName', 'parseInfo', 'startingCash',
-                      'ownersDraw', 'taxPayments', 'customItems',
-                      'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios', 'actualBeginning'];
-        const results = await Promise.all(
-          keys.map(k => window.storage.get(`cashflow:${activeYear}:${k}`).catch(() => null))
-        );
-        if (cancelled) return;
-        const [qb, fn, pi, sc, od, tp, ci, ae, ts, ab, sv, abeg] = results;
-        if (qb?.value) setQbData(JSON.parse(qb.value));
-        if (fn?.value) setFileName(fn.value);
-        if (pi?.value) setParseInfo(JSON.parse(pi.value));
-        if (sc?.value) setStartingCash(Number(sc.value) || 0);
-        if (od?.value) setOwnersDraw(JSON.parse(od.value));
-        if (tp?.value) setTaxPayments(JSON.parse(tp.value));
-        if (ci?.value) setCustomItems(JSON.parse(ci.value));
-        if (ae?.value) setActualEnding(JSON.parse(ae.value));
-        if (ts?.value) setLastSavedAt(ts.value);
-        if (ab?.value) setAccruedByMonth(JSON.parse(ab.value));
-        if (sv?.value) setScenarios(JSON.parse(sv.value));
-        if (abeg?.value) setActualBeginning(JSON.parse(abeg.value));
+        const r = await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`);
+        if (r.ok) {
+          const { state } = await r.json();
+          if (!cancelled && state) {
+            if (state.qbData)        setQbData(state.qbData);
+            if (state.fileName)      setFileName(state.fileName);
+            if (state.parseInfo)     setParseInfo(state.parseInfo);
+            if (state.startingCash != null) setStartingCash(Number(state.startingCash) || 0);
+            if (state.ownersDraw)    setOwnersDraw(state.ownersDraw);
+            if (state.taxPayments)   setTaxPayments(state.taxPayments);
+            if (state.customItems)   setCustomItems(state.customItems);
+            if (state.actualEnding)  setActualEnding(state.actualEnding);
+            if (state.accruedByMonth) setAccruedByMonth(state.accruedByMonth);
+            if (state.scenarios)     setScenarios(state.scenarios);
+            if (state.actualBeginning) setActualBeginning(state.actualBeginning);
+            if (state.lastSavedAt)   setLastSavedAt(state.lastSavedAt);
+          }
+        }
       } catch (err) {
-        console.warn('Storage load failed:', err);
+        console.warn('Cloud load failed:', err);
       } finally {
         if (!cancelled) setIsLoaded(true);
       }
     })();
 
-    // Load Ramp token from localStorage (separate from window.storage)
+    // Ramp token stays local — it's a per-user OAuth token, not shared data
     const storedToken = localStorage.getItem('cashflow:ramp_token');
     const storedExpires = localStorage.getItem('cashflow:ramp_expires');
     if (storedToken && (!storedExpires || Date.now() < Number(storedExpires))) {
@@ -121,7 +119,6 @@ export default function CashFlowDashboard() {
       if (rampErr) {
         setRampError(`Ramp connection failed: ${rampErr}`);
       }
-      // Clean the token out of the URL
       window.history.replaceState({}, '', window.location.pathname + window.location.search);
     }
 
@@ -131,35 +128,26 @@ export default function CashFlowDashboard() {
   useEffect(() => {
     if (!isLoaded) return;
     const saveAll = async () => {
-      const now = new Date().toISOString();
       try {
-        const y = activeYear;
-        await Promise.all([
-          qbData
-            ? window.storage.set(`cashflow:${y}:qbData`, JSON.stringify(qbData))
-            : window.storage.delete(`cashflow:${y}:qbData`).catch(() => null),
-          fileName
-            ? window.storage.set(`cashflow:${y}:fileName`, fileName)
-            : window.storage.delete(`cashflow:${y}:fileName`).catch(() => null),
-          parseInfo
-            ? window.storage.set(`cashflow:${y}:parseInfo`, JSON.stringify(parseInfo))
-            : window.storage.delete(`cashflow:${y}:parseInfo`).catch(() => null),
-          window.storage.set(`cashflow:${y}:startingCash`, String(startingCash)),
-          window.storage.set(`cashflow:${y}:ownersDraw`, JSON.stringify(ownersDraw)),
-          window.storage.set(`cashflow:${y}:taxPayments`, JSON.stringify(taxPayments)),
-          window.storage.set(`cashflow:${y}:customItems`, JSON.stringify(customItems)),
-          window.storage.set(`cashflow:${y}:actualEnding`, JSON.stringify(actualEnding)),
-          window.storage.set(`cashflow:${y}:lastSavedAt`, now),
-          window.storage.set(`cashflow:${y}:accruedByMonth`, JSON.stringify(accruedByMonth)),
-          window.storage.set(`cashflow:${y}:scenarios`, JSON.stringify(scenarios)),
-          window.storage.set(`cashflow:${y}:actualBeginning`, JSON.stringify(actualBeginning)),
-        ]);
-        setLastSavedAt(now);
+        const state = {
+          qbData, fileName, parseInfo, startingCash,
+          ownersDraw, taxPayments, customItems,
+          actualEnding, actualBeginning, accruedByMonth, scenarios,
+        };
+        const r = await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state }),
+        });
+        if (r.ok) {
+          const { savedAt } = await r.json();
+          if (savedAt) setLastSavedAt(savedAt);
+        }
       } catch (err) {
-        console.warn('Storage save failed:', err);
+        console.warn('Cloud save failed:', err);
       }
     };
-    const t = setTimeout(saveAll, 400);
+    const t = setTimeout(saveAll, 1000);
     return () => clearTimeout(t);
   }, [qbData, fileName, parseInfo, startingCash, ownersDraw, taxPayments, customItems, actualEnding, actualBeginning, accruedByMonth, scenarios, activeYear, isLoaded]);
 
@@ -182,12 +170,9 @@ export default function CashFlowDashboard() {
 
   const clearSavedData = async () => {
     try {
-      const keys = ['qbData', 'fileName', 'parseInfo', 'startingCash',
-                    'ownersDraw', 'taxPayments', 'customItems',
-                    'actualEnding', 'lastSavedAt', 'accruedByMonth', 'scenarios'];
-      await Promise.all(keys.map(k => window.storage.delete(`cashflow:${activeYear}:${k}`).catch(() => null)));
+      await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`, { method: 'DELETE' });
     } catch (err) {
-      console.warn('Clear failed:', err);
+      console.warn('Cloud clear failed:', err);
     }
     resetStateToDefaults();
   };
