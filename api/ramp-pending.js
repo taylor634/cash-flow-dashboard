@@ -78,28 +78,40 @@ export default async function handler(req, res) {
       return 0;
     };
 
+    // Log raw field keys of first bill to help identify correct payment date field
+    if (allBills.length > 0) {
+      console.log('Ramp bill sample keys:', Object.keys(allBills[0]));
+      console.log('Ramp bill sample:', JSON.stringify(allBills[0], null, 2));
+    }
+
     const bills = allBills.map(b => {
-      // Pick the best available date for "when does this clear the bank"
-      // Ramp uses various field names depending on bill type and status:
-      // scheduled_at / payment_date = when payment is actually scheduled to go out
-      // due_at / due_date = when the bill is due
+      // Use payment date ONLY — not due date.
+      // Priority: explicit payment/scheduled fields on the bill itself,
+      // then check nested payment object if present.
       const paymentDate =
-        b.scheduled_at ||
         b.payment_date ||
         b.scheduled_payment_date ||
-        b.paid_at ||
-        b.due_at ||
-        b.due_date ||
+        b.payment_scheduled_date ||
+        b.scheduled_at ||
+        b.payment?.payment_date ||
+        b.payment?.scheduled_date ||
+        b.payment?.date ||
         null;
+      // NOTE: intentionally NOT falling back to due_at / due_date
+
+      // Collect all raw date fields for debugging
+      const rawDates = {};
+      const dateKeys = ['due_date','due_at','payment_date','scheduled_payment_date',
+        'payment_scheduled_date','scheduled_at','paid_at','payment'];
+      dateKeys.forEach(k => { if (b[k] !== undefined) rawDates[k] = b[k]; });
 
       return {
         id: b.id,
         vendor: b.vendor?.name || b.counterparty_name || b.description || 'Unknown',
         amount: parseAmount(b),
         due_date: paymentDate,   // front-end uses this field for month placement
-        scheduled_at: b.scheduled_at || null,
-        payment_date: b.payment_date || b.scheduled_payment_date || null,
         status: b.status,
+        _raw_dates: rawDates,   // debug: remove once field names are confirmed
       };
     });
 
