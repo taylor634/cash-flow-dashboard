@@ -238,7 +238,7 @@ export default function CashFlowDashboard() {
       savedAt: new Date().toISOString(),
       startingCash, ownersDraw, taxPayments, customItems,
       actualEnding, accruedByMonth, qbData,
-      monthlyEndings: calculations.monthlyData.map(m => m.endBudget),
+      monthlyEndings: calculations.monthlyData.map(m => m.bankBalance),
     };
     setScenarios(prev => [...prev, snapshot]);
     setNewScenarioName('');
@@ -1004,14 +1004,7 @@ export default function CashFlowDashboard() {
                   return (
                     <tr key={row.month}>
                       <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
-                      <td>
-                        {fmt(row.startActual)}
-                        {row.startActual !== row.startBudget && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', color: '#9E9484' }}>
-                            bud: {fmtCompact(row.startBudget)}
-                          </div>
-                        )}
-                      </td>
+                      <td>{fmt(row.startActual)}</td>
                       <td>
                         <details style={{ display: 'inline' }}>
                           <summary style={{ cursor: 'pointer', listStyle: 'none', textDecoration: 'underline dotted' }}>
@@ -1050,14 +1043,7 @@ export default function CashFlowDashboard() {
                       </td>
                       <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                       <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
-                      <td style={{ fontWeight: 600 }}>
-                        {fmt(row.bankBalance)}
-                        {row.bankBalance !== row.endBudget && (
-                          <div style={{ fontSize: '10px', marginTop: '2px', color: '#9E9484' }}>
-                            bud: {fmtCompact(row.endBudget)}
-                          </div>
-                        )}
-                      </td>
+                      <td style={{ fontWeight: 600 }}>{fmt(row.bankBalance)}</td>
                       <td style={{ borderLeft: '2px solid #E8E0D0', minWidth: '130px' }}>
                         <input
                           type="number"
@@ -1325,7 +1311,7 @@ export default function CashFlowDashboard() {
                         <span>Starting: <strong className="mono">{fmt(sel.startingCash)}</strong></span>
                         <span>YTD In: <strong className="mono" style={{ color: '#2D5A3D' }}>{fmtCompact(ytdIn)}</strong></span>
                         <span>YTD Out: <strong className="mono" style={{ color: '#8B2A1C' }}>{fmtCompact(ytdOut)}</strong></span>
-                        <span>Year-End: <strong className="mono">{fmt(monthly[11].endBudget)}</strong></span>
+                        <span>Year-End: <strong className="mono">{fmt(sel.monthlyEndings?.[11] ?? monthly[11].endBudget)}</strong></span>
                       </div>
                     </div>
                     <div style={{ overflowX: 'auto' }}>
@@ -1343,6 +1329,7 @@ export default function CashFlowDashboard() {
                         </thead>
                         <tbody>
                           {monthly.map((row, m) => {
+                            const cashEnd = sel.monthlyEndings?.[m] ?? row.endBudget;
                             return (
                               <tr key={row.month}>
                                 <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
@@ -1351,7 +1338,7 @@ export default function CashFlowDashboard() {
                                 <td style={{ color: '#8B2A1C' }}>({fmt(row.totalOut).replace('$','').replace('(','').replace(')','')})</td>
                                 <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                                 <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
-                                <td style={{ fontWeight: 600, color: row.endBudget < 0 ? '#8B2A1C' : color }}>{fmt(row.endBudget)}</td>
+                                <td style={{ fontWeight: 600, color: cashEnd < 0 ? '#8B2A1C' : color }}>{fmt(cashEnd)}</td>
                               </tr>
                             );
                           })}
