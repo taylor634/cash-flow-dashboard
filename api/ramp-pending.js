@@ -102,17 +102,10 @@ export default async function handler(req, res) {
         id: b.id,
         vendor: b.vendor?.name || b.counterparty_name || b.description || 'Unknown',
         amount: parseAmount(b),
-        due_date: paymentDate,   // payment date — when money leaves the bank
-        bill_date: billDate,     // invoice date — which month the bill belongs to
+        due_date: paymentDate,       // payment date — when money leaves the bank
+        bill_date: billDate,         // invoice date if available (b.invoice_date etc.)
+        invoice_due_at: b.due_at || null,  // invoice due date — proxy for invoice month (due_at ≈ invoice date + 30 days)
         status: b.status,
-        // Debug: expose all top-level date-ish keys to confirm field name
-        _bill_date_debug: {
-          invoice_date: b.invoice_date,
-          bill_date: b.bill_date,
-          invoice_at: b.invoice_at,
-          created_at: b.created_at,
-          invoice_number: b.invoice_number,
-        },
       };
     });
 

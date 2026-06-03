@@ -727,13 +727,36 @@ export default function CashFlowDashboard() {
         {/* ── Bank Reconciliation (current year only) ── */}
         {activeYear > new Date().getFullYear() ? null : (() => {
           const reconRow = calculations.monthlyData[reconMonth];
-          // Only include Ramp bills whose payment date is AFTER the selected month.
-          // Bills paid in or before the selected month have already cleared the bank.
+          // Include a bill in this month's reconciliation only if:
+          // 1) The invoice belongs to this month or earlier — derived from invoice_due_at
+          //    (Ramp's due_at ≈ invoice date + 30 days, so invoice month ≈ due_at month - 1)
+          //    If no due_at, fall back to bill_date, otherwise include it.
+          // 2) The payment date is AFTER this month (hasn't cleared the bank yet)
           const reconBills = rampBills?.filter(b => {
+            // Check payment date is after reconMonth
             if (!b.due_date) return false;
-            const d = new Date(b.due_date);
-            return d.getFullYear() > activeYear ||
-              (d.getFullYear() === activeYear && d.getMonth() > reconMonth);
+            const payDate = new Date(b.due_date);
+            const payAfterMonth =
+              payDate.getFullYear() > activeYear ||
+              (payDate.getFullYear() === activeYear && payDate.getMonth() > reconMonth);
+            if (!payAfterMonth) return false;
+
+            // Check invoice belongs to reconMonth or earlier
+            if (b.bill_date) {
+              const bd = new Date(b.bill_date);
+              return bd.getFullYear() < activeYear ||
+                (bd.getFullYear() === activeYear && bd.getMonth() <= reconMonth);
+            }
+            if (b.invoice_due_at) {
+              // invoice month ≈ due_at month - 1
+              const dueAt = new Date(b.invoice_due_at);
+              const invoiceMonth = dueAt.getMonth() === 0 ? 11 : dueAt.getMonth() - 1;
+              const invoiceYear = dueAt.getMonth() === 0 ? dueAt.getFullYear() - 1 : dueAt.getFullYear();
+              return invoiceYear < activeYear ||
+                (invoiceYear === activeYear && invoiceMonth <= reconMonth);
+            }
+            // No invoice date info — include it (better to show than silently drop)
+            return true;
           }) ?? [];
           const rampTotal = reconBills.reduce((s, b) => s + b.amount, 0);
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
