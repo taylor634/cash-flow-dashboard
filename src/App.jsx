@@ -727,7 +727,15 @@ export default function CashFlowDashboard() {
         {/* ── Bank Reconciliation (current year only) ── */}
         {activeYear > new Date().getFullYear() ? null : (() => {
           const reconRow = calculations.monthlyData[reconMonth];
-          const rampTotal = rampBills?.reduce((s, b) => s + b.amount, 0) ?? 0;
+          // Only include Ramp bills whose payment date is AFTER the selected month.
+          // Bills paid in or before the selected month have already cleared the bank.
+          const reconBills = rampBills?.filter(b => {
+            if (!b.due_date) return false;
+            const d = new Date(b.due_date);
+            return d.getFullYear() > activeYear ||
+              (d.getFullYear() === activeYear && d.getMonth() > reconMonth);
+          }) ?? [];
+          const rampTotal = reconBills.reduce((s, b) => s + b.amount, 0);
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
           const adjustedBalance = reconRow ? reconRow.endActualProjected + rampTotal + accrued : null;
           const rampReady = RAMP_API_BASE !== 'PENDING_VERCEL_URL';
@@ -761,9 +769,9 @@ export default function CashFlowDashboard() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E8E0D0' }}>
                       <span style={{ fontSize: '13px', color: '#6B6252', letterSpacing: '0.03em' }}>
                         + Ramp Scheduled Payments
-                        {rampBills !== null && (
+                        {rampBills !== null && reconBills.length > 0 && (
                           <span style={{ marginLeft: '8px', fontSize: '11px', color: '#2D5A3D', background: '#E8F0E8', padding: '2px 6px', borderRadius: '2px' }}>
-                            {rampBills.length} bill{rampBills.length !== 1 ? 's' : ''}
+                            {reconBills.length} bill{reconBills.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </span>
@@ -864,19 +872,19 @@ export default function CashFlowDashboard() {
                       )}
 
                       {rampBills !== null && (
-                        rampBills.length === 0 ? (
+                        reconBills.length === 0 ? (
                           <div style={{ padding: '16px', background: '#F5F1EA', fontSize: '13px', color: '#6B6252', textAlign: 'center', fontStyle: 'italic' }}>
-                            No pending payments in Ramp.
+                            No unpaid Ramp bills clearing after {MONTHS[reconMonth]}.
                           </div>
                         ) : (
                           <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #E8E0D0' }}>
-                            {rampBills.map((bill) => (
+                            {reconBills.map((bill) => (
                               <div key={bill.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #F0E9D8', fontSize: '12px' }}>
                                 <div>
                                   <div style={{ fontWeight: 500 }}>{bill.vendor}</div>
                                   {bill.due_date && (
                                     <div style={{ fontSize: '11px', color: '#6B6252', marginTop: '2px' }}>
-                                      Due {new Date(bill.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      Pays {new Date(bill.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                     </div>
                                   )}
                                 </div>
