@@ -91,11 +91,12 @@ export default async function handler(req, res) {
       // Intentionally NOT falling back to due_at / due_date
 
       // Bill/invoice date — when the bill was issued (determines which month it belongs to)
+      // NOTE: deliberately excluding created_at — that's when the bill was entered in Ramp,
+      // not the actual invoice date. Only use explicit invoice date fields.
       const billDate =
         b.invoice_date ||
         b.bill_date ||
         b.invoice_at ||
-        b.created_at ||
         null;
 
       return {

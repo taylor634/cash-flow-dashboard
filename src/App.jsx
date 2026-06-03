@@ -755,8 +755,9 @@ export default function CashFlowDashboard() {
               return invoiceYear < activeYear ||
                 (invoiceYear === activeYear && invoiceMonth <= reconMonth);
             }
-            // No invoice date info — include it (better to show than silently drop)
-            return true;
+            // No invoice date info — exclude from past reconciliation months to avoid
+            // showing bills that may not belong to this period
+            return false;
           }) ?? [];
           const rampTotal = reconBills.reduce((s, b) => s + b.amount, 0);
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
