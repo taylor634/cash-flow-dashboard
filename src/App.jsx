@@ -414,14 +414,17 @@ export default function CashFlowDashboard() {
       return { data: null, info: { error: "Found month columns but no line items with values." } };
     }
 
+    const payrollItems = lineItems.filter(i => i.isPayroll);
     return {
       data: { inflows, outflows, lineItems },
       info: {
         rowsFound: lineItems.length,
         incomeItems: lineItems.filter(i => i.section === 'income').length,
-        expenseItems: lineItems.filter(i => i.section === 'expense').length,
+        expenseItems: lineItems.filter(i => i.section === 'expense' && !i.isPayroll).length,
+        payrollItems: payrollItems.length,
         totalIncome: inflows.budget.reduce((s, v) => s + v, 0),
         totalExpense: outflows.budget.reduce((s, v) => s + v, 0),
+        totalPayrollExcluded: payrollItems.reduce((s, i) => s + i.budget.reduce((a, b) => a + b, 0), 0),
       }
     };
   };
@@ -658,6 +661,16 @@ export default function CashFlowDashboard() {
                     <div className="serif" style={{ fontSize: '20px' }}>{fileName}</div>
                     <div style={{ fontSize: '12px', color: '#6B6252', marginTop: '6px' }}>
                       Parsed <strong>{parseInfo?.incomeItems || 0}</strong> income items ({fmtCompact(parseInfo?.totalIncome || 0)}) and <strong>{parseInfo?.expenseItems || 0}</strong> expense items ({fmtCompact(parseInfo?.totalExpense || 0)})
+                      {parseInfo?.payrollItems > 0 && (
+                        <span style={{ marginLeft: '8px', color: '#8B2A1C', background: '#FEF0EE', padding: '2px 7px', borderRadius: '2px', fontSize: '11px' }}>
+                          + {parseInfo.payrollItems} payroll rows excluded ({fmtCompact(parseInfo.totalPayrollExcluded)})
+                        </span>
+                      )}
+                      {parseInfo?.payrollItems === 0 && (
+                        <span style={{ marginLeft: '8px', color: '#7B5B00', background: '#FFF4E6', padding: '2px 7px', borderRadius: '2px', fontSize: '11px' }}>
+                          ⚠ No payroll rows detected — check label name in XLSX
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '12px' }}>
