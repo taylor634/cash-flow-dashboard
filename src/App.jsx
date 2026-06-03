@@ -978,7 +978,28 @@ export default function CashFlowDashboard() {
                           </div>
                         )}
                       </td>
-                      <td>{fmt(row.inflowsBudget)}</td>
+                      <td>
+                        <details style={{ display: 'inline' }}>
+                          <summary style={{ cursor: 'pointer', listStyle: 'none', textDecoration: 'underline dotted' }}>
+                            {fmt(row.inflowsBudget)}
+                          </summary>
+                          <div style={{ position: 'absolute', zIndex: 100, background: '#FDFBF6', border: '1px solid #B8AE98', padding: '12px', minWidth: '220px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', fontSize: '11px', marginTop: '4px' }}>
+                            <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>QB Income Lines — {row.month}</div>
+                            {qbData?.lineItems?.filter(li => li.section === 'income' && li.budget[row.monthIdx] !== 0).map((li, i) => (
+                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', padding: '2px 0', borderBottom: '1px solid #F0E9D8' }}>
+                                <span style={{ color: '#6B6252', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{li.label}</span>
+                                <span className="mono" style={{ flexShrink: 0 }}>{fmt(li.budget[row.monthIdx])}</span>
+                              </div>
+                            ))}
+                            {row.customIn > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', padding: '2px 0', borderBottom: '1px solid #F0E9D8' }}>
+                                <span style={{ color: '#2A5298' }}>Custom items</span>
+                                <span className="mono">{fmt(row.customIn)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      </td>
                       <td>({fmt(row.outflowsBudget - row.draw - row.tax).replace('$','').replace('(','').replace(')','')})</td>
                       <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                       <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
