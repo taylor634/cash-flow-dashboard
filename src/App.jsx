@@ -406,71 +406,59 @@ export default function CashFlowDashboard() {
       const startBudget = runningBudget;
       const startActual = runningActual;
 
-      // Ramp bank timing adjustment:
-      //
-      // CURRENT month: QB has already counted future-dated Ramp bills as outflows,
-      //   but the bank hasn't paid them yet. So the bank balance is HIGHER than QB
-      //   shows. Add those future bills back to Cash End.
-      //
-      // FUTURE month M: When the payment actually clears, DEDUCT it from Cash End.
-      //
-      // PAST months: no adjustment (already reconciled via Actual End entries).
-      const todayMonth = new Date().getMonth();
-      const todayYear = new Date().getFullYear();
-      const isCurrentMonth = activeYear === todayYear && m === todayMonth;
-      const isFutureMonth = activeYear > todayYear || (activeYear === todayYear && m > todayMonth);
-
-      let rampThisMonth = [];
-      let rampBankAdjustment = 0; // positive = ADD to Cash End, negative = DEDUCT
-
-      if (isCurrentMonth && rampBills.length > 0) {
-        // Two groups show in the current month:
-        // 1) Future-dated bills: payment date is AFTER this month — QB counted them
-        //    as outflows already but the bank hasn't paid yet (add back to bank balance)
-        // 2) Overdue bills: payment date was in a PAST month but still OPEN/unpaid —
-        //    same situation, money is still in the bank despite QB recording it
-        rampThisMonth = rampBills.filter(b => {
-          if (!b.due_date) return false;
-          const d = new Date(b.due_date);
-          const isOverdue =
-            d.getFullYear() < todayYear ||
-            (d.getFullYear() === todayYear && d.getMonth() < todayMonth);
-          const isFuture =
-            d.getFullYear() > todayYear ||
-            (d.getFullYear() === todayYear && d.getMonth() > todayMonth);
-          return isOverdue || isFuture;
-        });
-        rampBankAdjustment = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0); // add back
-      } else if (isFutureMonth && rampBills.length > 0) {
-        // Bills scheduled to clear the bank this future month
-        rampThisMonth = rampBills.filter(b => {
-          if (!b.due_date) return false;
-          const d = new Date(b.due_date);
-          return d.getFullYear() === activeYear && d.getMonth() === m;
-        });
-        rampBankAdjustment = -rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0); // deduct
-      }
-
       const priorAccrued = m > 0 ? (accruedByMonth[m - 1] || 0) : 0;
-      const clearingTotal = Math.abs(rampBankAdjustment) + priorAccrued;
 
       const endBudget = startBudget + totalIn - totalOut;
-      // rampBankAdjustment: +amount means bank has more than QB (add), -amount means bank pays out (deduct)
-      const endActualProjected = startActual + totalIn - totalOut + rampBankAdjustment - priorAccrued;
+      // endActualProjected = clean QB-based projection (draw, tax, accrued settlements)
+      // bankBalance = endActualProjected + still-pending Ramp bills + this month's accrual
+      //   This is what the bank statement should show, matching the Bank Reconciliation.
+      const endActualProjected = startActual + totalIn - totalOut - priorAccrued;
+
+      // Ramp bills still pending (not yet cleared) at end of month m:
+      // payment date is after month m AND (bill date is in/before month m, or no bill date)
+      const rampPendingThisMonth = rampBills.filter(b => {
+        if (!b.due_date) return false;
+        const payDate = new Date(b.due_date + 'T12:00:00');
+        const payAfter =
+          payDate.getFullYear() > activeYear ||
+          (payDate.getFullYear() === activeYear && payDate.getMonth() > m);
+        if (!payAfter) return false;
+        if (b.bill_date) {
+          const bd = new Date(b.bill_date + 'T12:00:00');
+          return bd.getFullYear() < activeYear ||
+            (bd.getFullYear() === activeYear && bd.getMonth() <= m);
+        }
+        return true; // no bill date — include
+      });
+      const rampPendingAmt = rampPendingThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
+
+      // Bills clearing the bank IN this month (for the "Clears Bank" column)
+      const rampClearingThisMonth = rampBills.filter(b => {
+        if (!b.due_date) return false;
+        const d = new Date(b.due_date + 'T12:00:00');
+        return d.getFullYear() === activeYear && d.getMonth() === m;
+      });
+      const rampClearingAmt = rampClearingThisMonth.reduce((s, b) => s + (b.amount || 0), 0);
+      const clearingTotal = rampClearingAmt + priorAccrued;
+
+      // bankBalance = true bank position: QB projection + pending Ramp + accrued not yet paid
+      const accrued = Number(accruedByMonth[m]) || 0;
+      const bankBalance = endActualProjected + rampPendingAmt + accrued;
+
       const endActual = actualEnding[m] !== null ? actualEnding[m] : null;
-      const variance = endActual !== null ? endActual - endActualProjected : null;
+      const variance = endActual !== null ? endActual - bankBalance : null;
 
       monthlyData.push({
         month: MONTHS[m], monthIdx: m, startBudget, startActual,
         qbIn, qbOut, inflowsBudget: totalIn, outflowsBudget: totalOut,
         draw: drawTotal, tax: taxThisMonth, customIn, customOut,
-        endBudget, endActual, endActualProjected, variance,
+        endBudget, endActual, endActualProjected, bankBalance, variance,
         hasActual: endActual !== null,
-        clearingTotal, rampThisMonth, rampBankAdjustment, priorAccrued, isCurrentMonth,
+        clearingTotal, rampClearingThisMonth, rampPendingAmt, priorAccrued,
       });
 
       runningBudget = endBudget;
-      runningActual = endActual !== null ? endActual : endActualProjected;
+      runningActual = endActual !== null ? endActual : bankBalance;
     }
 
     const ytdInflowsBudget = monthlyData.reduce((s, m) => s + m.inflowsBudget, 0);
@@ -723,7 +711,8 @@ export default function CashFlowDashboard() {
           });
           const rampTotal = reconBills.reduce((s, b) => s + b.amount, 0);
           const accrued = Number(accruedByMonth[reconMonth]) || 0;
-          const adjustedBalance = reconRow ? reconRow.endActualProjected + rampTotal + accrued : null;
+          // adjustedBalance = reconRow.bankBalance (endActualProjected + rampPending + accrued)
+          const adjustedBalance = reconRow ? reconRow.bankBalance : null;
 
           return (
             <section className="card" style={{ marginBottom: '32px', borderLeft: '3px solid #1A1A1A' }}>
@@ -947,10 +936,10 @@ export default function CashFlowDashboard() {
               <tbody>
                 {calculations.monthlyData.map((row) => {
                   const actualEnd = actualEnding[row.monthIdx];
-                  const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.endActualProjected : null;
+                  const endVariance = actualEnd !== null && actualEnd !== undefined ? actualEnd - row.bankBalance : null;
 
-                  const { clearingTotal, rampThisMonth, rampBankAdjustment, priorAccrued, isCurrentMonth } = row;
-                  const hasClearing = clearingTotal > 0 || rampThisMonth.length > 0;
+                  const { clearingTotal, rampClearingThisMonth, priorAccrued } = row;
+                  const hasClearing = clearingTotal > 0 || rampClearingThisMonth.length > 0;
 
                   return (
                     <tr key={row.month}>
@@ -989,8 +978,8 @@ export default function CashFlowDashboard() {
                       <td>({fmt(row.draw).replace('$','').replace('(','').replace(')','')})</td>
                       <td>{row.tax > 0 ? `(${fmt(row.tax).replace('$','').replace('(','').replace(')','')})` : '—'}</td>
                       <td style={{ fontWeight: 600 }}>
-                        {fmt(row.endActualProjected)}
-                        {row.endActualProjected !== row.endBudget && (
+                        {fmt(row.bankBalance)}
+                        {row.bankBalance !== row.endBudget && (
                           <div style={{ fontSize: '10px', marginTop: '2px', color: '#9E9484' }}>
                             bud: {fmtCompact(row.endBudget)}
                           </div>
@@ -1019,45 +1008,36 @@ export default function CashFlowDashboard() {
                           <span style={{ color: '#9E9484' }}>—</span>
                         ) : (
                           <div>
-                            {/* Summary line */}
+                            {/* Summary total */}
                             {clearingTotal > 0 && (
-                              <div style={{ fontWeight: 600, color: isCurrentMonth ? '#2D5A3D' : '#7B5B00', marginBottom: '4px' }}>
-                                {isCurrentMonth ? `+${fmt(rampBankAdjustment)} in bank` : `(${fmt(clearingTotal)}) total`}
+                              <div style={{ fontWeight: 600, color: '#7B5B00', marginBottom: '4px' }}>
+                                ({fmt(clearingTotal)}) total
                               </div>
                             )}
-                            {/* Accrued from prior month (always a deduction) */}
+                            {/* Accrued from prior month */}
                             {priorAccrued > 0 && (
-                              <div style={{ fontSize: '11px', color: '#6B6252', marginBottom: '2px', paddingBottom: '3px', borderBottom: rampThisMonth.length > 0 ? '1px dashed #E8E0D0' : 'none' }}>
+                              <div style={{ fontSize: '11px', color: '#6B6252', marginBottom: '2px', paddingBottom: '3px', borderBottom: rampClearingThisMonth.length > 0 ? '1px dashed #E8E0D0' : 'none' }}>
                                 <span style={{ color: '#9E9484' }}>Accrued (prev mo.):</span><br />
                                 ({fmt(priorAccrued)})
                               </div>
                             )}
-                            {/* Ramp bills */}
-                            {rampThisMonth.length > 0 && (
+                            {/* Ramp bills clearing this month */}
+                            {rampClearingThisMonth.length > 0 && (
                               <div>
                                 {priorAccrued > 0 && (
                                   <div style={{ color: '#9E9484', fontSize: '11px', marginTop: '3px', marginBottom: '2px' }}>
-                                    {isCurrentMonth ? 'Ramp (still in bank):' : 'Ramp scheduled:'}
+                                    Ramp clearing:
                                   </div>
                                 )}
-                                {rampThisMonth.slice(0, 4).map(b => {
-                                  const statusLabel = {
-                                    APPROVED: 'Scheduled',
-                                    PAYMENT_PROCESSING: 'Processing',
-                                    PAYMENT_IN_TRANSIT: 'In Transit',
-                                    APPROVAL_NEEDED: 'Pending',
-                                  }[b.status] || b.status;
-                                  return (
-                                    <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', marginBottom: '1px' }}>
-                                      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>
-                                        {isCurrentMonth ? '+' : ''}{b.vendor}: {isCurrentMonth ? fmt(b.amount) : `(${fmt(b.amount)})`}
-                                      </div>
-                                      <div style={{ color: '#9E9484', fontSize: '10px' }}>{statusLabel}</div>
+                                {rampClearingThisMonth.slice(0, 4).map(b => (
+                                  <div key={b.id} style={{ color: '#6B6252', fontSize: '11px', marginBottom: '1px' }}>
+                                    <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '130px' }}>
+                                      {b.vendor}: ({fmt(b.amount)})
                                     </div>
-                                  );
-                                })}
-                                {rampThisMonth.length > 4 && (
-                                  <div style={{ color: '#9E9484', fontSize: '11px' }}>+{rampThisMonth.length - 4} more</div>
+                                  </div>
+                                ))}
+                                {rampClearingThisMonth.length > 4 && (
+                                  <div style={{ color: '#9E9484', fontSize: '11px' }}>+{rampClearingThisMonth.length - 4} more</div>
                                 )}
                               </div>
                             )}
