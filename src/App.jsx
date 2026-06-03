@@ -323,6 +323,9 @@ export default function CashFlowDashboard() {
     }
 
     let currentSection = null;
+    // Track when we're inside a Payroll Expenses sub-section
+    let inPayrollSection = false;
+    let payrollIndent = -1;
     const INCOME_SECTIONS = new Set(['income', 'other income']);
     const EXPENSE_SECTIONS = new Set(['expense', 'cost of goods sold', 'other expense']);
 
@@ -340,15 +343,50 @@ export default function CashFlowDashboard() {
       if (!rawLabel) continue;
       const label = rawLabel.trim();
       const labelLower = label.toLowerCase();
-      if (/^total\s+/i.test(label) || /^net\s+/i.test(label)) { currentSection = null; continue; }
-      const isUnindented = rawLabel.length > 0 && rawLabel[0] !== ' ';
+      const indent = rawLabel.length - rawLabel.trimStart().length;
+      const isUnindented = indent === 0;
+
+      // Top-level "Total …" / "Net …" rows reset the section
+      if (isUnindented && (/^total\s+/i.test(label) || /^net\s+/i.test(label))) {
+        currentSection = null;
+        inPayrollSection = false;
+        payrollIndent = -1;
+        continue;
+      }
+
+      // Indented sub-total rows (e.g. "Total Payroll Expenses") — skip but DON'T reset section
+      if (!isUnindented && (/^total\s+/i.test(label) || /^net\s+/i.test(label))) {
+        // Exit payroll sub-section if we're at or above payroll indent
+        if (inPayrollSection && indent <= payrollIndent) {
+          inPayrollSection = false;
+          payrollIndent = -1;
+        }
+        continue;
+      }
+
       if (isUnindented) {
+        inPayrollSection = false;
+        payrollIndent = -1;
         if (INCOME_SECTIONS.has(labelLower)) { currentSection = 'income'; continue; }
         if (EXPENSE_SECTIONS.has(labelLower)) { currentSection = 'expense'; continue; }
         currentSection = null;
         continue;
       }
+
       if (!currentSection) continue;
+
+      // If we were in a payroll sub-section but indent has come back up, exit it
+      if (inPayrollSection && indent <= payrollIndent) {
+        inPayrollSection = false;
+        payrollIndent = -1;
+      }
+
+      // Detect entering a Payroll Expenses sub-section (even if the header row has no values)
+      if (currentSection === 'expense' && /payroll/i.test(label) && !inPayrollSection) {
+        inPayrollSection = true;
+        payrollIndent = indent;
+      }
+
       const monthly = Array(12).fill(0);
       let hasAnyValue = false;
       for (let m = 0; m < 12; m++) {
@@ -361,13 +399,14 @@ export default function CashFlowDashboard() {
         }
       }
       if (!hasAnyValue) continue;
-      const isPayroll = currentSection === 'expense' && /payroll/i.test(label);
+
+      const isPayroll = currentSection === 'expense' && inPayrollSection;
       if (currentSection === 'income') {
         for (let m = 0; m < 12; m++) inflows.budget[m] += monthly[m];
       } else if (!isPayroll) {
         for (let m = 0; m < 12; m++) outflows.budget[m] += monthly[m];
       }
-      lineItems.push({ label, section: currentSection, budget: monthly, isPayroll: isPayroll || false });
+      lineItems.push({ label, section: currentSection, budget: monthly, isPayroll });
     }
 
     const totalBudget = inflows.budget.reduce((s, v) => s + v, 0) + outflows.budget.reduce((s, v) => s + v, 0);
