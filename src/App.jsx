@@ -451,12 +451,21 @@ export default function CashFlowDashboard() {
       let rampBankAdjustment = 0; // positive = ADD to Cash End, negative = DEDUCT
 
       if (isCurrentMonth && rampBills) {
-        // Bills with a payment date AFTER this month are still sitting in the bank
+        // Two groups show in the current month:
+        // 1) Future-dated bills: payment date is AFTER this month — QB counted them
+        //    as outflows already but the bank hasn't paid yet (add back to bank balance)
+        // 2) Overdue bills: payment date was in a PAST month but still OPEN/unpaid —
+        //    same situation, money is still in the bank despite QB recording it
         rampThisMonth = rampBills.filter(b => {
           if (!b.due_date) return false;
           const d = new Date(b.due_date);
-          return d.getFullYear() > todayYear ||
+          const isOverdue =
+            d.getFullYear() < todayYear ||
+            (d.getFullYear() === todayYear && d.getMonth() < todayMonth);
+          const isFuture =
+            d.getFullYear() > todayYear ||
             (d.getFullYear() === todayYear && d.getMonth() > todayMonth);
+          return isOverdue || isFuture;
         });
         rampBankAdjustment = rampThisMonth.reduce((s, b) => s + (b.amount || 0), 0); // add back
       } else if (isFutureMonth && rampBills) {
