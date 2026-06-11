@@ -1249,6 +1249,23 @@ export default function CashFlowDashboard() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid #1A1A1A' }}>
+                    <td colSpan={2} style={{ fontFamily: 'Source Sans 3, sans-serif', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '8px 4px', color: '#1A1A1A' }}>Net Total</td>
+                    {Array.from({ length: 12 }, (_, m) => {
+                      const net = customItems.reduce((sum, item) => {
+                        const v = Number(item.values[m]) || 0;
+                        return item.type === 'inflow' ? sum + v : sum - v;
+                      }, 0);
+                      return (
+                        <td key={m} style={{ fontWeight: 700, fontSize: '12px', color: net < 0 ? '#8B2A1C' : net > 0 ? '#2D5A3D' : '#6B6252', padding: '8px 4px' }}>
+                          {net !== 0 ? fmt(net) : '—'}
+                        </td>
+                      );
+                    })}
+                    <td />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
