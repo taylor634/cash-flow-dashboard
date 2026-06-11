@@ -253,7 +253,7 @@ export default function CashFlowDashboard() {
       name,
       savedAt: new Date().toISOString(),
       startingCash, ownersDraw, taxPayments, customItems,
-      actualEnding, accruedByMonth, qbData,
+      payrollByMonth, actualEnding, accruedByMonth, qbData,
       monthlyEndings: calculations.monthlyData.map(m => m.bankBalance),
     };
     setScenarios(prev => [...prev, snapshot]);
@@ -266,6 +266,7 @@ export default function CashFlowDashboard() {
     setStartingCash(s.startingCash);
     setOwnersDraw(s.ownersDraw);
     setTaxPayments(s.taxPayments);
+    if (s.payrollByMonth) setPayrollByMonth(s.payrollByMonth);
     setActualEnding(s.actualEnding || Array(12).fill(null));
     setAccruedByMonth(s.accruedByMonth || Array(12).fill(0));
     if (s.qbData) setQbData(s.qbData);
