@@ -169,6 +169,20 @@ export default function CashFlowDashboard() {
     setActiveYear(year);     // triggers the load effect with new year's prefix
   };
 
+  const copyCustomItemsFromYear = async (fromYear) => {
+    try {
+      const r = await fetch(`${RAMP_API_BASE}/api/state?year=${fromYear}`);
+      if (!r.ok) return;
+      const state = await r.json();
+      if (state.customItems && state.customItems.length > 0) {
+        const copied = state.customItems.map(item => ({ ...item, id: Date.now() + Math.random() }));
+        setCustomItems(copied);
+      }
+    } catch (e) {
+      // silently ignore
+    }
+  };
+
   const addRampBill = () => {
     const vendor = newBillVendor.trim();
     const amount = parseFloat(newBillAmount.replace(/[,$]/g, ''));
@@ -1176,9 +1190,16 @@ export default function CashFlowDashboard() {
         <section className="card" style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '20px' }}>
             <h2 className="serif" style={{ fontSize: '24px', fontWeight: 400, margin: 0 }}>Custom Line Items</h2>
-            <button className="ghost" onClick={addCustomItem}>
-              <Plus size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-1px' }} />Add Item
-            </button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {activeYear === 2026 && (
+                <button className="ghost" onClick={() => copyCustomItemsFromYear(2027)} style={{ fontSize: '11px', opacity: 0.7 }}>
+                  Copy from FY 2027
+                </button>
+              )}
+              <button className="ghost" onClick={addCustomItem}>
+                <Plus size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-1px' }} />Add Item
+              </button>
+            </div>
           </div>
           {customItems.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 16px', color: '#6B6252', fontSize: '13px', fontStyle: 'italic' }}>
