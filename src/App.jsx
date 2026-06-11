@@ -1221,6 +1221,7 @@ export default function CashFlowDashboard() {
                     <th style={{ fontFamily: 'Source Sans 3, sans-serif', width: '180px' }}>Label</th>
                     <th style={{ fontFamily: 'Source Sans 3, sans-serif', width: '90px' }}>Type</th>
                     {MONTHS.map(m => <th key={m}>{m}</th>)}
+                    <th style={{ fontFamily: 'Source Sans 3, sans-serif', fontWeight: 700 }}>Total</th>
                     <th style={{ width: '30px' }}></th>
                   </tr>
                 </thead>
@@ -1241,6 +1242,9 @@ export default function CashFlowDashboard() {
                           <input type="number" value={item.values[m] || ''} onChange={(e) => updateCustomValue(item.id, m, e.target.value)} className="edit" placeholder="0" />
                         </td>
                       ))}
+                      <td style={{ fontWeight: 700, fontSize: '12px', whiteSpace: 'nowrap', color: '#1A1A1A' }}>
+                        {fmt(item.values.reduce((s, v) => s + (Number(v) || 0), 0))}
+                      </td>
                       <td>
                         <button onClick={() => removeCustomItem(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8B2A1C', padding: '4px' }}>
                           <Trash2 size={14} />
@@ -1263,6 +1267,7 @@ export default function CashFlowDashboard() {
                         </td>
                       );
                     })}
+                    <td />
                     <td />
                   </tr>
                 </tfoot>
