@@ -173,8 +173,8 @@ export default function CashFlowDashboard() {
     try {
       const r = await fetch(`${RAMP_API_BASE}/api/state?year=${fromYear}`);
       if (!r.ok) return;
-      const state = await r.json();
-      if (state.customItems && state.customItems.length > 0) {
+      const { state } = await r.json();
+      if (state?.customItems && state.customItems.length > 0) {
         const copied = state.customItems.map(item => ({ ...item, id: Date.now() + Math.random() }));
         setCustomItems(copied);
       }
