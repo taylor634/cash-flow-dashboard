@@ -264,7 +264,6 @@ export default function CashFlowDashboard() {
     setStartingCash(s.startingCash);
     setOwnersDraw(s.ownersDraw);
     setTaxPayments(s.taxPayments);
-    setCustomItems(s.customItems || []);
     setActualEnding(s.actualEnding || Array(12).fill(null));
     setAccruedByMonth(s.accruedByMonth || Array(12).fill(0));
     if (s.qbData) setQbData(s.qbData);
