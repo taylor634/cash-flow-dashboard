@@ -60,6 +60,8 @@ export default function CashFlowDashboard() {
   const [savingScenario, setSavingScenario] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState('');
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
+  const [renamingScenarioId, setRenamingScenarioId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // Ramp bills — manually entered
   const [rampBills, setRampBills] = useState([]);
@@ -271,6 +273,13 @@ export default function CashFlowDashboard() {
 
   const deleteScenario = (id) => {
     setScenarios(prev => prev.filter(s => s.id !== id));
+  };
+
+  const commitRename = (id) => {
+    const trimmed = renameValue.trim();
+    if (trimmed) setScenarios(prev => prev.map(s => s.id === id ? { ...s, name: trimmed } : s));
+    setRenamingScenarioId(null);
+    setRenameValue('');
   };
 
 
@@ -1293,8 +1302,23 @@ export default function CashFlowDashboard() {
                   return (
                     <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', border: `1px solid ${color}`, padding: '8px 14px', borderLeft: `4px solid ${color}`, background: isSelected ? color : 'transparent', cursor: 'pointer', transition: 'all 0.15s' }}
                       onClick={() => setSelectedScenarioId(isSelected ? null : s.id)}>
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Fraunces, serif', color: isSelected ? '#FDFBF6' : color }}>{s.name}</div>
+                      <div onClick={e => e.stopPropagation()}>
+                        {renamingScenarioId === s.id ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onBlur={() => commitRename(s.id)}
+                            onKeyDown={e => { if (e.key === 'Enter') commitRename(s.id); if (e.key === 'Escape') { setRenamingScenarioId(null); setRenameValue(''); } }}
+                            style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Fraunces, serif', color: isSelected ? '#FDFBF6' : color, background: 'transparent', border: 'none', borderBottom: `1px solid ${isSelected ? 'rgba(253,251,246,0.5)' : color}`, outline: 'none', padding: '0', width: '140px' }}
+                          />
+                        ) : (
+                          <div
+                            title="Double-click to rename"
+                            onDoubleClick={() => { setRenamingScenarioId(s.id); setRenameValue(s.name); }}
+                            style={{ fontSize: '13px', fontWeight: 600, fontFamily: 'Fraunces, serif', color: isSelected ? '#FDFBF6' : color, cursor: 'text' }}
+                          >{s.name}</div>
+                        )}
                         <div style={{ fontSize: '10px', color: isSelected ? 'rgba(253,251,246,0.7)' : '#6B6252', letterSpacing: '0.05em', marginTop: '2px' }}>
                           {new Date(s.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                           {isSelected ? ' · click to close' : ' · click to view'}
