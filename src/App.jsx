@@ -314,8 +314,8 @@ export default function CashFlowDashboard() {
   };
 
   const parseQBReport = (rows) => {
-    const inflows = { budget: Array(12).fill(0) };
-    const outflows = { budget: Array(12).fill(0) };
+    const inflows = { actual: Array(12).fill(0), budget: Array(12).fill(0) };
+    const outflows = { actual: Array(12).fill(0), budget: Array(12).fill(0) };
     const lineItems = [];
 
     let headerRow = -1;
@@ -344,6 +344,25 @@ export default function CashFlowDashboard() {
         info: { error: `Could not find month columns. Found ${Object.keys(monthCols).length} of 12 months.` }
       };
     }
+
+    // Detect file year from month header cells
+    let fileYear = new Date().getFullYear();
+    const headerRowCells = rows[headerRow] || [];
+    for (const col of Object.values(monthCols)) {
+      const cellText = String(headerRowCells[col] || '');
+      const yearMatch = cellText.match(/\d{4}/);
+      if (yearMatch) { fileYear = parseInt(yearMatch[0]); break; }
+    }
+
+    // Detect Budget column offset from sub-header row (e.g. "Actual", "Budget", ...)
+    let budgetOffset = null;
+    const subHeaderRow = rows[headerRow + 1] || [];
+    const firstMonthCol = monthCols[Object.keys(monthCols).sort((a, b) => a - b)[0]];
+    for (let offset = 1; offset <= 5; offset++) {
+      const cell = String(subHeaderRow[firstMonthCol + offset] || '').trim().toLowerCase();
+      if (cell === 'budget') { budgetOffset = offset; break; }
+    }
+    const hasBudgetCol = budgetOffset !== null;
 
     let currentSection = null;
     // Track when we're inside a Payroll Expenses sub-section
@@ -410,26 +429,38 @@ export default function CashFlowDashboard() {
         payrollIndent = indent;
       }
 
-      const monthly = Array(12).fill(0);
+      const monthlyActual = Array(12).fill(0);
+      const monthlyBudget = Array(12).fill(0);
       let hasAnyValue = false;
       for (let m = 0; m < 12; m++) {
-        const col = monthCols[m];
-        const raw = row[col];
-        const n = Number(raw);
-        if (!isNaN(n) && raw !== null && raw !== '' && raw !== undefined) {
-          monthly[m] = n;
-          if (n !== 0) hasAnyValue = true;
+        const actualCol = monthCols[m];
+        if (actualCol === undefined) continue;
+        const rawActual = row[actualCol];
+        const nActual = Number(rawActual);
+        if (!isNaN(nActual) && rawActual !== null && rawActual !== '' && rawActual !== undefined) {
+          monthlyActual[m] = nActual;
+          if (nActual !== 0) hasAnyValue = true;
+        }
+        if (hasBudgetCol) {
+          const rawBudget = row[actualCol + budgetOffset];
+          const nBudget = Number(rawBudget);
+          if (!isNaN(nBudget) && rawBudget !== null && rawBudget !== '' && rawBudget !== undefined) {
+            monthlyBudget[m] = nBudget;
+            if (nBudget !== 0) hasAnyValue = true;
+          }
+        } else {
+          monthlyBudget[m] = monthlyActual[m];
         }
       }
       if (!hasAnyValue) continue;
 
       const isPayroll = currentSection === 'expense' && inPayrollSection;
       if (currentSection === 'income') {
-        for (let m = 0; m < 12; m++) inflows.budget[m] += monthly[m];
+        for (let m = 0; m < 12; m++) { inflows.actual[m] += monthlyActual[m]; inflows.budget[m] += monthlyBudget[m]; }
       } else if (!isPayroll) {
-        for (let m = 0; m < 12; m++) outflows.budget[m] += monthly[m];
+        for (let m = 0; m < 12; m++) { outflows.actual[m] += monthlyActual[m]; outflows.budget[m] += monthlyBudget[m]; }
       }
-      lineItems.push({ label, section: currentSection, budget: monthly, isPayroll });
+      lineItems.push({ label, section: currentSection, actual: monthlyActual, budget: monthlyBudget, isPayroll });
     }
 
     const totalBudget = inflows.budget.reduce((s, v) => s + v, 0) + outflows.budget.reduce((s, v) => s + v, 0);
@@ -439,7 +470,7 @@ export default function CashFlowDashboard() {
 
     const payrollItems = lineItems.filter(i => i.isPayroll);
     return {
-      data: { inflows, outflows, lineItems },
+      data: { inflows, outflows, lineItems, fileYear, hasBudgetCol },
       info: {
         rowsFound: lineItems.length,
         incomeItems: lineItems.filter(i => i.section === 'income').length,
@@ -448,10 +479,21 @@ export default function CashFlowDashboard() {
         totalIncome: inflows.budget.reduce((s, v) => s + v, 0),
         totalExpense: outflows.budget.reduce((s, v) => s + v, 0),
         totalPayrollExcluded: payrollItems.reduce((s, i) => s + i.budget.reduce((a, b) => a + b, 0), 0),
+        fileYear,
+        hasBudgetCol,
       }
     };
   };
 
+
+  // Use QB actuals for past months, QB budget for current/future months
+  const getBlendedValue = (actualArr, budgetArr, monthIdx, fileYear) => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth();
+    const isPast = fileYear < currentYear || (fileYear === currentYear && monthIdx < currentMonth);
+    return isPast ? (actualArr[monthIdx] || 0) : (budgetArr[monthIdx] || 0);
+  };
 
   const calculations = useMemo(() => {
     const monthlyData = [];
@@ -459,8 +501,11 @@ export default function CashFlowDashboard() {
     let runningActual = startingCash;
 
     for (let m = 0; m < 12; m++) {
-      const qbIn = qbData?.inflows.budget[m] || 0;
-      const qbOut = qbData?.outflows.budget[m] || 0;
+      const today = new Date();
+      const fileYear = qbData?.fileYear || activeYear;
+      const isActualMonth = fileYear < today.getFullYear() || (fileYear === today.getFullYear() && m < today.getMonth());
+      const qbIn = qbData ? getBlendedValue(qbData.inflows.actual, qbData.inflows.budget, m, fileYear) : 0;
+      const qbOut = qbData ? getBlendedValue(qbData.outflows.actual, qbData.outflows.budget, m, fileYear) : 0;
       const drawTotal = ownersDraw.health[m] + ownersDraw.guaranteed[m] + ownersDraw.other[m];
       let taxThisMonth = 0;
       if (taxPayments.q1Month === m) taxThisMonth += taxPayments.q1;
@@ -526,7 +571,7 @@ export default function CashFlowDashboard() {
         qbIn, qbOut, inflowsBudget: totalIn, outflowsBudget: totalOut,
         draw: drawTotal, tax: taxThisMonth, customIn, customOut,
         endBudget, endActual, endActualProjected, bankBalance, variance,
-        hasActual: endActual !== null, payroll,
+        hasActual: endActual !== null, payroll, isActualMonth,
         clearingTotal, rampClearingThisMonth, rampPendingAmt, priorAccrued,
       });
 
@@ -1026,7 +1071,14 @@ export default function CashFlowDashboard() {
 
                   return (
                     <tr key={row.month}>
-                      <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>{row.month}</td>
+                      <td style={{ fontFamily: 'Fraunces, serif', fontSize: '15px', fontWeight: 500 }}>
+                        {row.month}
+                        {qbData?.hasBudgetCol && (
+                          <span style={{ marginLeft: '5px', fontSize: '9px', fontFamily: 'Source Sans 3, sans-serif', letterSpacing: '0.06em', padding: '1px 4px', borderRadius: '2px', verticalAlign: 'middle', background: row.isActualMonth ? '#E8F0E8' : '#F0EBE0', color: row.isActualMonth ? '#2D5A3D' : '#7B5B00' }}>
+                            {row.isActualMonth ? 'ACT' : 'BUD'}
+                          </span>
+                        )}
+                      </td>
                       <td>{fmt(row.startActual)}</td>
                       <td>
                         <details style={{ display: 'inline' }}>
@@ -1035,10 +1087,10 @@ export default function CashFlowDashboard() {
                           </summary>
                           <div style={{ position: 'absolute', zIndex: 100, background: '#FDFBF6', border: '1px solid #B8AE98', padding: '12px', minWidth: '220px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', fontSize: '11px', marginTop: '4px' }}>
                             <div style={{ fontWeight: 600, marginBottom: '6px', fontSize: '12px' }}>QB Income Lines — {row.month}</div>
-                            {qbData?.lineItems?.filter(li => li.section === 'income' && li.budget[row.monthIdx] !== 0).map((li, i) => (
+                            {qbData?.lineItems?.filter(li => li.section === 'income' && (row.isActualMonth ? li.actual[row.monthIdx] : li.budget[row.monthIdx]) !== 0).map((li, i) => (
                               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', padding: '2px 0', borderBottom: '1px solid #F0E9D8' }}>
                                 <span style={{ color: '#6B6252', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{li.label}</span>
-                                <span className="mono" style={{ flexShrink: 0 }}>{fmt(li.budget[row.monthIdx])}</span>
+                                <span className="mono" style={{ flexShrink: 0 }}>{fmt(row.isActualMonth ? li.actual[row.monthIdx] : li.budget[row.monthIdx])}</span>
                               </div>
                             ))}
                             {row.customIn > 0 && (
