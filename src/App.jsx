@@ -303,7 +303,20 @@ export default function CashFlowDashboard() {
       }
       if (!targetSheet) targetSheet = wb.SheetNames[0];
       const sheet = wb.Sheets[targetSheet];
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+      const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+      // QB sometimes exports with v=0 for all formula cells; recover values from formula strings
+      const rows = rawRows.map((row, r) => {
+        if (!row) return row;
+        return row.map((v, c) => {
+          if (v === 0 || v === null) {
+            const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+            if (cell && cell.f && /^-?\d+(\.\d+)?$/.test(String(cell.f).trim())) {
+              return parseFloat(cell.f);
+            }
+          }
+          return v;
+        });
+      });
       const parsed = parseQBReport(rows);
       if (parsed.data) parsed.info.sheetUsed = targetSheet;
       setQbData(parsed.data);
@@ -376,7 +389,7 @@ export default function CashFlowDashboard() {
     let inPayrollSection = false;
     let payrollIndent = -1;
     const INCOME_SECTIONS = new Set(['income', 'other income']);
-    const EXPENSE_SECTIONS = new Set(['expense', 'cost of goods sold', 'other expense']);
+    const EXPENSE_SECTIONS = new Set(['expense', 'expenses', 'cost of goods sold', 'other expense', 'other expenses']);
 
     const getRawLabel = (row) => {
       for (let c = 0; c < 2; c++) {
