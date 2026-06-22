@@ -355,12 +355,19 @@ export default function CashFlowDashboard() {
     }
 
     // Detect Budget column offset from sub-header row (e.g. "Actual", "Budget", ...)
+    // Only activate if the sub-header row explicitly has "Actual" at the first month column
     let budgetOffset = null;
-    const subHeaderRow = rows[headerRow + 1] || [];
     const firstMonthCol = monthCols[Object.keys(monthCols).sort((a, b) => a - b)[0]];
-    for (let offset = 1; offset <= 5; offset++) {
-      const cell = String(subHeaderRow[firstMonthCol + offset] || '').trim().toLowerCase();
-      if (cell === 'budget') { budgetOffset = offset; break; }
+    for (let subRow = headerRow + 1; subRow <= headerRow + 3; subRow++) {
+      const subHeaderRow = rows[subRow] || [];
+      const atFirst = String(subHeaderRow[firstMonthCol] || '').trim().toLowerCase();
+      if (atFirst === 'actual') {
+        for (let offset = 1; offset <= 5; offset++) {
+          const cell = String(subHeaderRow[firstMonthCol + offset] || '').trim().toLowerCase();
+          if (cell === 'budget') { budgetOffset = offset; break; }
+        }
+        break;
+      }
     }
     const hasBudgetCol = budgetOffset !== null;
 
