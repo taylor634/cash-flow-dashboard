@@ -175,10 +175,20 @@ export default function CashFlowDashboard() {
     try {
       const r = await fetch(`${RAMP_API_BASE}/api/state?year=${fromYear}`);
       if (!r.ok) return;
-      const { state } = await r.json();
-      if (state?.customItems && state.customItems.length > 0) {
-        const copied = state.customItems.map(item => ({ ...item, id: Date.now() + Math.random() }));
+      const { state: fromState } = await r.json();
+      if (fromState?.customItems && fromState.customItems.length > 0) {
+        const copied = fromState.customItems.map(item => ({ ...item, id: Date.now() + Math.random() }));
         setCustomItems(copied);
+        // Save immediately so items persist even if user closes the tab right away
+        const currentR = await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`);
+        if (currentR.ok) {
+          const { state: currentState } = await currentR.json();
+          await fetch(`${RAMP_API_BASE}/api/state?year=${activeYear}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: { ...currentState, customItems: copied } }),
+          });
+        }
       }
     } catch (e) {
       // silently ignore
