@@ -62,6 +62,7 @@ export default function CashFlowDashboard() {
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
   const [renamingScenarioId, setRenamingScenarioId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
+  const [scenarioAsOf, setScenarioAsOf] = useState(null); // { year, month } locked when snapshot loaded
 
   // Ramp bills — manually entered
   const [rampBills, setRampBills] = useState([]);
@@ -258,10 +259,13 @@ export default function CashFlowDashboard() {
 
   const saveCurrentScenario = () => {
     const name = newScenarioName.trim() || `Scenario ${scenarios.length + 1}`;
+    const now = new Date();
     const snapshot = {
       id: Date.now(),
       name,
-      savedAt: new Date().toISOString(),
+      savedAt: now.toISOString(),
+      asOfYear: now.getFullYear(),
+      asOfMonth: now.getMonth(),
       startingCash, ownersDraw, taxPayments, customItems,
       payrollByMonth, actualEnding, accruedByMonth, qbData,
       monthlyEndings: calculations.monthlyData.map(m => m.bankBalance),
@@ -280,6 +284,12 @@ export default function CashFlowDashboard() {
     setActualEnding(s.actualEnding || Array(12).fill(null));
     setAccruedByMonth(s.accruedByMonth || Array(12).fill(0));
     if (s.qbData) setQbData(s.qbData);
+    // Lock blending perspective to when snapshot was saved
+    if (s.asOfYear !== undefined && s.asOfMonth !== undefined) {
+      setScenarioAsOf({ year: s.asOfYear, month: s.asOfMonth });
+    } else {
+      setScenarioAsOf(null);
+    }
   };
 
   const deleteScenario = (id) => {
@@ -331,6 +341,7 @@ export default function CashFlowDashboard() {
       if (parsed.data) parsed.info.sheetUsed = targetSheet;
       setQbData(parsed.data);
       setParseInfo(parsed.info);
+      setScenarioAsOf(null); // return to live view when uploading fresh QB data
     } catch (err) {
       setParseInfo({ error: `Could not parse file: ${err.message}` });
     }
@@ -516,12 +527,10 @@ export default function CashFlowDashboard() {
   };
 
 
-  // Use QB actuals for past months, QB budget for current/future months
-  const getBlendedValue = (actualArr, budgetArr, monthIdx, fileYear) => {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth();
-    const isPast = fileYear < currentYear || (fileYear === currentYear && monthIdx < currentMonth);
+  // Use QB actuals for past months, QB budget for current/future months.
+  // refYear/refMonth: the perspective date (today, or locked snapshot save date).
+  const getBlendedValue = (actualArr, budgetArr, monthIdx, fileYear, refYear, refMonth) => {
+    const isPast = fileYear < refYear || (fileYear === refYear && monthIdx < refMonth);
     return isPast ? (actualArr[monthIdx] || 0) : (budgetArr[monthIdx] || 0);
   };
 
@@ -530,12 +539,16 @@ export default function CashFlowDashboard() {
     let runningBudget = startingCash;
     let runningActual = startingCash;
 
+    // Use snapshot's save date when one is loaded, otherwise today
+    const ref = scenarioAsOf || { year: new Date().getFullYear(), month: new Date().getMonth() };
+    const refYear = ref.year;
+    const refMonth = ref.month;
+
     for (let m = 0; m < 12; m++) {
-      const today = new Date();
       const fileYear = qbData?.fileYear || activeYear;
-      const isActualMonth = fileYear < today.getFullYear() || (fileYear === today.getFullYear() && m < today.getMonth());
-      const qbIn = qbData ? getBlendedValue(qbData.inflows.actual, qbData.inflows.budget, m, fileYear) : 0;
-      const qbOut = qbData ? getBlendedValue(qbData.outflows.actual, qbData.outflows.budget, m, fileYear) : 0;
+      const isActualMonth = fileYear < refYear || (fileYear === refYear && m < refMonth);
+      const qbIn = qbData ? getBlendedValue(qbData.inflows.actual, qbData.inflows.budget, m, fileYear, refYear, refMonth) : 0;
+      const qbOut = qbData ? getBlendedValue(qbData.outflows.actual, qbData.outflows.budget, m, fileYear, refYear, refMonth) : 0;
       const drawTotal = ownersDraw.health[m] + ownersDraw.guaranteed[m] + ownersDraw.other[m];
       let taxThisMonth = 0;
       if (taxPayments.q1Month === m) taxThisMonth += taxPayments.q1;
@@ -615,7 +628,7 @@ export default function CashFlowDashboard() {
     const lowestMonth = monthlyData.reduce((min, m) => m.endBudget < min.endBudget ? m : min, monthlyData[0]);
 
     return { monthlyData, ytdInflowsBudget, ytdOutflowsBudget, netBudget, lowestMonth };
-  }, [qbData, startingCash, ownersDraw, taxPayments, customItems, payrollByMonth, actualEnding, accruedByMonth, rampBills, activeYear]);
+  }, [qbData, startingCash, ownersDraw, taxPayments, customItems, payrollByMonth, actualEnding, accruedByMonth, rampBills, activeYear, scenarioAsOf]);
 
   const updateDraw = (category, monthIdx, value) => {
     setOwnersDraw(prev => ({
@@ -818,6 +831,17 @@ export default function CashFlowDashboard() {
             )}
           </div>
         </section>
+
+        {scenarioAsOf && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F0EBE0', border: '1px solid #C8B89A', borderLeft: '4px solid #7B5B00', padding: '10px 16px', borderRadius: '4px', marginBottom: '20px' }}>
+            <span style={{ fontSize: '12px', fontFamily: 'Source Sans 3, sans-serif', color: '#7B5B00', letterSpacing: '0.05em' }}>
+              <strong>Snapshot locked</strong> — showing actuals/budget as of {MONTHS[scenarioAsOf.month]} {scenarioAsOf.year}. ACT/BUD badges reflect save date, not today.
+            </span>
+            <button onClick={() => setScenarioAsOf(null)} style={{ background: 'none', border: '1px solid #7B5B00', color: '#7B5B00', padding: '3px 10px', fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Source Sans 3, sans-serif', borderRadius: '2px', whiteSpace: 'nowrap', marginLeft: '16px' }}>
+              Return to Live View
+            </button>
+          </div>
+        )}
 
         <section style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
           <div className="card">
