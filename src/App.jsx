@@ -59,6 +59,8 @@ export default function CashFlowDashboard() {
   const [scenarios, setScenarios] = useState([]);
   const [savingScenario, setSavingScenario] = useState(false);
   const [newScenarioName, setNewScenarioName] = useState('');
+  const [snapshotAsOfMonth, setSnapshotAsOfMonth] = useState(new Date().getMonth());
+  const [snapshotAsOfYear, setSnapshotAsOfYear] = useState(new Date().getFullYear());
   const [selectedScenarioId, setSelectedScenarioId] = useState(null);
   const [renamingScenarioId, setRenamingScenarioId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -259,13 +261,12 @@ export default function CashFlowDashboard() {
 
   const saveCurrentScenario = () => {
     const name = newScenarioName.trim() || `Scenario ${scenarios.length + 1}`;
-    const now = new Date();
     const snapshot = {
       id: Date.now(),
       name,
-      savedAt: now.toISOString(),
-      asOfYear: now.getFullYear(),
-      asOfMonth: now.getMonth(),
+      savedAt: new Date().toISOString(),
+      asOfYear: snapshotAsOfYear,
+      asOfMonth: snapshotAsOfMonth,
       startingCash, ownersDraw, taxPayments, customItems,
       payrollByMonth, actualEnding, accruedByMonth, qbData,
       monthlyEndings: calculations.monthlyData.map(m => m.bankBalance),
@@ -1394,21 +1395,41 @@ export default function CashFlowDashboard() {
             </div>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               {savingScenario ? (
-                <>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newScenarioName}
-                    onChange={e => setNewScenarioName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') saveCurrentScenario(); if (e.key === 'Escape') setSavingScenario(false); }}
-                    placeholder="e.g. Base Case"
-                    style={{ border: '1px solid #B8AE98', padding: '8px 12px', fontSize: '13px', fontFamily: 'Source Sans 3, sans-serif', width: '180px' }}
-                  />
-                  <button className="primary" onClick={saveCurrentScenario}>Save</button>
-                  <button className="ghost" onClick={() => setSavingScenario(false)}>Cancel</button>
-                </>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newScenarioName}
+                      onChange={e => setNewScenarioName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveCurrentScenario(); if (e.key === 'Escape') setSavingScenario(false); }}
+                      placeholder="e.g. August Snapshot"
+                      style={{ border: '1px solid #B8AE98', padding: '8px 12px', fontSize: '13px', fontFamily: 'Source Sans 3, sans-serif', width: '180px' }}
+                    />
+                    <button className="primary" onClick={saveCurrentScenario}>Save</button>
+                    <button className="ghost" onClick={() => setSavingScenario(false)}>Cancel</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', color: '#6B6252', fontFamily: 'Source Sans 3, sans-serif' }}>
+                    <span style={{ letterSpacing: '0.05em', textTransform: 'uppercase' }}>Perspective:</span>
+                    <select
+                      value={snapshotAsOfMonth}
+                      onChange={e => setSnapshotAsOfMonth(Number(e.target.value))}
+                      style={{ border: '1px solid #B8AE98', padding: '3px 6px', fontSize: '12px', fontFamily: 'Source Sans 3, sans-serif', background: '#FAF8F4' }}
+                    >
+                      {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                    </select>
+                    <select
+                      value={snapshotAsOfYear}
+                      onChange={e => setSnapshotAsOfYear(Number(e.target.value))}
+                      style={{ border: '1px solid #B8AE98', padding: '3px 6px', fontSize: '12px', fontFamily: 'Source Sans 3, sans-serif', background: '#FAF8F4' }}
+                    >
+                      {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <span style={{ color: '#9C8E78', fontSize: '10px' }}>ACT/BUD locked to this date when loaded</span>
+                  </div>
+                </div>
               ) : (
-                <button className="primary" onClick={() => setSavingScenario(true)}>
+                <button className="primary" onClick={() => { setSnapshotAsOfMonth(new Date().getMonth()); setSnapshotAsOfYear(new Date().getFullYear()); setSavingScenario(true); }}>
                   <Plus size={13} style={{ display: 'inline', marginRight: '6px', verticalAlign: '-2px' }} />
                   Save Snapshot
                 </button>
