@@ -267,7 +267,7 @@ export default function CashFlowDashboard() {
       savedAt: new Date().toISOString(),
       asOfYear: snapshotAsOfYear,
       asOfMonth: snapshotAsOfMonth,
-      startingCash, ownersDraw, taxPayments, customItems,
+      startingCash, ownersDraw, taxPayments, customItems, rampBills,
       payrollByMonth, actualEnding, accruedByMonth, qbData,
       monthlyEndings: calculations.monthlyData.map(m => m.bankBalance),
     };
@@ -281,6 +281,8 @@ export default function CashFlowDashboard() {
     setStartingCash(s.startingCash);
     setOwnersDraw(s.ownersDraw);
     setTaxPayments(s.taxPayments);
+    setCustomItems(s.customItems || []);
+    setRampBills(s.rampBills || []);
     if (s.payrollByMonth) setPayrollByMonth(s.payrollByMonth);
     setActualEnding(s.actualEnding || Array(12).fill(null));
     setAccruedByMonth(s.accruedByMonth || Array(12).fill(0));
@@ -295,6 +297,17 @@ export default function CashFlowDashboard() {
 
   const deleteScenario = (id) => {
     setScenarios(prev => prev.filter(s => s.id !== id));
+  };
+
+  const moveScenario = (id, dir) => {
+    setScenarios(prev => {
+      const idx = prev.findIndex(s => s.id === id);
+      const next = idx + dir;
+      if (next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return arr;
+    });
   };
 
   const commitRename = (id) => {
@@ -1474,8 +1487,12 @@ export default function CashFlowDashboard() {
                           {isSelected ? ' · click to close' : ' · click to view'}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '6px', marginLeft: '8px' }} onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                         <button onClick={() => loadScenario(s)} style={{ background: 'none', border: `1px solid ${isSelected ? 'rgba(253,251,246,0.5)' : '#B8AE98'}`, padding: '3px 8px', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Source Sans 3, sans-serif', color: isSelected ? '#FDFBF6' : undefined }}>Load</button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          <button onClick={() => moveScenario(s.id, -1)} disabled={i === 0} style={{ background: 'none', border: 'none', padding: '1px 4px', fontSize: '9px', color: i === 0 ? 'transparent' : (isSelected ? 'rgba(253,251,246,0.6)' : '#9C8E78'), cursor: i === 0 ? 'default' : 'pointer', lineHeight: 1 }}>▲</button>
+                          <button onClick={() => moveScenario(s.id, 1)} disabled={i === scenarios.length - 1} style={{ background: 'none', border: 'none', padding: '1px 4px', fontSize: '9px', color: i === scenarios.length - 1 ? 'transparent' : (isSelected ? 'rgba(253,251,246,0.6)' : '#9C8E78'), cursor: i === scenarios.length - 1 ? 'default' : 'pointer', lineHeight: 1 }}>▼</button>
+                        </div>
                         <button onClick={() => { deleteScenario(s.id); if (isSelected) setSelectedScenarioId(null); }} style={{ background: 'none', border: 'none', padding: '3px 6px', fontSize: '10px', color: isSelected ? 'rgba(253,251,246,0.8)' : '#8B2A1C', cursor: 'pointer' }}>
                           <Trash2 size={12} />
                         </button>
