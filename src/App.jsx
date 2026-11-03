@@ -638,7 +638,7 @@ export default function CashFlowDashboard() {
 
     const ytdInflowsBudget = monthlyData.reduce((s, m) => s + m.inflowsBudget, 0);
     const ytdOutflowsBudget = monthlyData.reduce((s, m) => s + m.outflowsBudget, 0);
-    const netBudget = ytdInflowsBudget - ytdOutflowsBudget;
+    const netBudget = monthlyData[11].bankBalance - startingCash;
     const lowestMonth = monthlyData.reduce((min, m) => m.endBudget < min.endBudget ? m : min, monthlyData[0]);
 
     return { monthlyData, ytdInflowsBudget, ytdOutflowsBudget, netBudget, lowestMonth };
