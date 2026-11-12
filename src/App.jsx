@@ -79,6 +79,7 @@ export default function CashFlowDashboard() {
   const [reconMonth, setReconMonth] = useState(() => Math.max(0, new Date().getMonth() - 1));
 
   useEffect(() => {
+    setIsLoaded(false); // prevent cloud save from firing before new year's state loads
     let cancelled = false;
     (async () => {
       try {
